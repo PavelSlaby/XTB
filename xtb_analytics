@@ -1,0 +1,602 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Sep 15 13:52:39 2024
+
+@author: pavel
+"""
+
+'''
+TO DO
+DataSets:
+        position level data 
+        ticker level data
+        ticker valuation per day data -- and compare it to whatsover
+        price history per each ticket -- to see the price series, VaR etc....
+
+Analytics
+-- different kinds of PnL - tutal return
+-- concentration
+-- VaR
+
+'''
+
+#%% Import packages and prepare the environment
+
+import pandas as pd
+import yfinance as yf
+from datetime import datetime 
+import re
+
+pd.set_option('display.max_columns', None) #to display all columns
+pd.set_option('display.width', 500)  #use the entire width to display the columns
+pd.set_option('display.max_rows', 634)
+
+
+
+#%% Orders file
+
+# load the source file
+folder_path = r"F:\Investing\XTB"
+file_name = "\cash_operations_simple_2024_11_01.csv"
+orders_df = pd.read_csv(folder_path + file_name,  sep = ';')
+
+#%%process the source orders table
+
+#change dtypes for faster processing
+orders_df[['Type', 'Comment', 'Symbol']] = orders_df[['Type', 'Comment', 'Symbol']].astype('string')
+orders_df.dtypes
+
+orders_df['Time'] = pd.to_datetime(orders_df['Time'], dayfirst = True)
+orders_df['Date'] = orders_df['Time'].dt.date
+
+#extract comment - trade price
+orders_df['trade_price'] = orders_df['Comment'].str.split('@', expand = True)[1]
+
+#position type
+orders_df.loc[orders_df['Comment'].str.contains('BUY'), 'position_type'] = 'buy'
+orders_df.loc[orders_df['Comment'].str.contains('CLOSE BUY'), 'position_type'] = 'sell'
+
+#volume
+def get_position_from_comment(string):
+    match = re.search(r'(\d+\.?\d*)\s*/?', string)   ## tohle chece zlepsit at to najde jen /
+    if match:
+        return match.group(1) 
+    return None
+
+orders_df.loc[orders_df['Comment'].str.contains('@'), 'volume'] = orders_df['Comment'].apply(get_position_from_comment)
+orders_df['volume'] = pd.to_numeric(orders_df['volume'])
+
+#direction
+orders_df['direction'] = orders_df['volume']
+orders_df.loc[orders_df['Type'].str.contains('Stocks/ETF sale') , 'direction'] = orders_df['direction'] * (-1)
+orders_df.loc[orders_df['direction'] == '', 'direction'] = 0
+orders_df['direction'] = orders_df['direction'].astype(float)
+orders_df['volume'] = orders_df['volume'].astype(float)
+
+### show the volume per ticket
+#orders_df.groupby('Symbol').agg({'direction' : 'sum'})
+
+
+#NVIDIA STOCK SPLIT
+
+def get_splits(yticker, xtb_ticker = None, hist= '5y'):
+    ticker = yf.Ticker(yticker)
+    ticker.history(period = hist)
+    ticker_orders_df = pd.DataFrame(ticker.splits)
+    if xtb_ticker == None:
+        ticker_orders_df['Symbol'] = yticker
+    else: 
+        ticker_orders_df['Symbol'] = xtb_ticker
+    ticker_orders_df = ticker_orders_df.reset_index()
+    ticker_orders_df['Date'] = ticker_orders_df['Date'].dt.date
+    ticker_orders_df.rename(columns = {'Stock Splits' : 'Split'}, inplace = True)
+    return ticker_orders_df
+
+split_orders_df = get_splits('NVDA', 'NVDA.US')
+
+ 
+## make function for the following
+orders_df = pd.merge(orders_df, split_orders_df, on=['Date', 'Symbol'], how='outer')
+orders_df.sort_values(by = ['Symbol', 'Date'], inplace = True)
+
+orders_df.loc[orders_df['Symbol'] == 'NVDA.US', ['Split']] = orders_df['Split'].bfill()
+
+orders_df.loc[orders_df['Split'].isna(), 'Split'] = 1
+
+orders_df['Split'] = orders_df['Split'].astype(float)
+orders_df.loc[orders_df['Symbol'] == 'NVDA.US', 'volume'] = orders_df['volume'] * orders_df['Split']
+orders_df.loc[orders_df['Symbol'] == 'NVDA.US', 'direction']  = orders_df['direction'] * orders_df['Split']
+
+
+# fill in NaN values
+orders_df.loc[orders_df['volume'].isna(), 'volume'] = 0
+orders_df.loc[orders_df['volume'] == '', 'volume'] = 0
+orders_df.loc[orders_df['direction'].isna(), 'direction'] = 0
+orders_df.loc[orders_df['direction'] == '', 'direction'] = 0
+orders_df.loc[orders_df['Type'].isna(), 'Type'] = 'Split'
+
+# drop the actuall split dates, which do not matter anymore
+orders_df.drop(orders_df.loc[orders_df['Type'] == 'Split' ].index, inplace = True)
+
+orders_df.loc[orders_df['Type'].str.contains('Stocks/ETF sale'), 'direction' ] = orders_df['volume' ].astype(float) * (-1)
+
+#change dtypes for faster processing
+orders_df[['Symbol', 'position_type']] = orders_df[['Symbol', 'position_type']].astype('string')
+
+
+
+#%%  Ticker Level Data
+
+
+#set up the dataframe
+direction_df = round(orders_df.groupby('Symbol')['direction'].sum(), 4)
+
+#manual mapping
+tickers_dict = {
+            'CRWD.US' : ['CRWD', 'USD'] , 
+            'DTLE.UK' : ['DTLE.L', 'EUR'],
+            'ECAR.UK' : ['ECAR.L', 'USD'],
+            'GOOGC.US' : ['GOOG', 'USD'],
+            'NVDA.US' : ['NVDA', 'USD'],
+            'ORSTED.DK' : ['ORSTED.CO', 'DKK'],
+            'VWS.DK' :  ['VWS.CO' , 'DKK'],
+            'TSLA.US': ['TSLA', 'USD'],
+            'IUSA.DE' : ['IUSA.DE', 'EUR'],  ## maybe I should change the ticker here
+            'XAIX.DE':  ['XAIX.DE', 'EUR'], ## could also change it for (IE00BGV5VN51.SG
+            'ENR.DE':  ['ENR.DE', 'EUR'],
+            'AMEM.DE':  ['AEEM.PA', 'EUR']
+            }
+
+
+fx_dict = {
+           'DKK' : 'DKKEUR=X',
+           'USD' : 'USDEUR=X',
+           'EUR' : 'EUREUR=X'
+           }
+
+
+position_overview_df = pd.merge(direction_df, pd.DataFrame(data = tickers_dict).T, left_on = 'Symbol', right_index = True)
+position_overview_df = position_overview_df.rename(columns = {0 : 'yf_ticker', 1 : 'crncy'})
+position_overview_df = position_overview_df[['yf_ticker','crncy','direction']]
+
+def get_last_price(ticker):
+    return yf.Ticker(ticker).history(period = '1d').Close.values[0] 
+
+# Get the latest price and curncy, and FX
+for i in position_overview_df.index:
+    ticker = position_overview_df.loc[position_overview_df.index == i ,'yf_ticker'].values[0]
+    ticker_prc = get_last_price(ticker)
+    position_overview_df.loc[ i ,'last_prc'] = ticker_prc
+    position_overview_df.loc[ i ,'crncy'] = position_overview_df.loc[position_overview_df.index == i , 'crncy'].values[0]
+    
+    if position_overview_df.loc[ i ,'crncy'] == 'EUR':
+        position_overview_df.loc[ i ,'fx'] = 1
+    else:
+        crncy = position_overview_df.loc[ i ,'crncy']
+        crncy_ticker = fx_dict[crncy]
+        position_overview_df.loc[ i ,'fx'] = get_last_price(crncy_ticker)
+    
+
+position_overview_df.reset_index(inplace = True )
+
+position_overview_df[['Symbol', 'yf_ticker', 'crncy']] = position_overview_df[['Symbol', 'yf_ticker', 'crncy']].astype('string')
+
+#Value the portfolio
+position_overview_df['mv'] = position_overview_df['direction'] * position_overview_df['last_prc'] * position_overview_df['fx']
+
+
+# total MV of a portfolio:
+sum(position_overview_df['mv'])
+
+#and detail:
+position_overview_df
+
+#%% Positions Table
+
+# positions table
+positions_df = orders_df.copy()
+
+# filters only relevant transasctions
+positions_df= positions_df.loc[positions_df['Type'].isin(['Stocks/ETF purchase', 'Dividend', 'Stocks/ETF sale',
+       'Withholding tax', 'SEC fee']), :]
+
+del positions_df['ID']
+del positions_df['Time']
+del positions_df['Split']
+
+positions_df = pd.merge(positions_df, position_overview_df.loc[:, ['Symbol', 'crncy', 'last_prc', 'fx', 'mv'] ], how = 'left', left_on = 'Symbol', right_on = 'Symbol')
+positions_df.rename(columns = {'mv': 'mv_last', 'fx' : 'fx_last'}, inplace = True )
+
+# Cost = Amount, should we rename to to "invested capital?"
+positions_df.loc[positions_df['Type'].isin(['Stocks/ETF purchase', 'Stocks/ETF sale']), 'cost'] = positions_df['Amount']
+
+cost_overall = positions_df.groupby('Symbol').agg({'cost' : 'sum'}).reset_index()
+cost_overall.rename(columns = {'cost' : 'cost_ticker'}, inplace = True)
+
+positions_df = pd.merge(positions_df, cost_overall, how = 'left', left_on = 'Symbol', right_on = 'Symbol')
+
+
+
+#positions_df['pnl'] = 0 
+#positions_df['pnl_tr'] = 0 
+#positions_df['crnt_value'] = 0 
+
+
+positions_df
+
+# change datatypes
+positions_df['last_prc'] = pd.to_numeric(positions_df['last_prc'] , errors='coerce')
+positions_df['fx_last'] = pd.to_numeric(positions_df['fx_last'] , errors='coerce')
+positions_df['volume'] = pd.to_numeric(positions_df['volume'] , errors='coerce')
+positions_df['today'] =  datetime.today() 
+positions_df['Date'] = pd.to_datetime(positions_df['Date'])
+positions_df['duration'] =  (positions_df['today'] - positions_df['Date']).dt.days
+del positions_df['today']
+
+# Current value
+def get_crnt_value(row):
+    if row['Type'] == 'Stocks/ETF purchase':
+        return row['fx_last'] * row['last_prc']  * row['volume'] 
+    if row['Type'] in ['Dividend', 'Withholding tax', 'SEC fee']:  ## lets check this later
+        return row['Amount']
+    if row['Type'] == 'Stocks/ETF sale':
+        return row['fx_last'] * row['last_prc']  * row['volume'] * -1
+
+def get_pnl(row):
+    if row['Type'] in ['Stocks/ETF purchase', 'Stocks/ETF sale']:
+        return row['crnt_value'] + row['Amount']
+    if row['Type'] in ['Dividend', 'Withholding tax', 'SEC fee']:
+        return 0
+
+
+ 
+def get_total_return(row):
+    if row['Type'] == 'Stocks/ETF purchase':
+        return row['crnt_value'] + row['Amount']
+    if row['Type'] in ['Dividend', 'Withholding tax', 'SEC fee']:
+        return row['crnt_value'] 
+    if row['Type'] == 'Stocks/ETF sale':
+        return row['crnt_value'] + row['Amount']
+
+
+def get_pnl_pct(row):
+    if row['Type'] in ['Stocks/ETF purchase', 'Stocks/ETF sale']:
+        return (row['crnt_value'] + row['cost'])  / row['cost_ticker'] * 100 * -1
+    if row['Type'] in ['Dividend', 'Withholding tax', 'SEC fee']:
+        return 0
+   
+
+
+def get_pnl_annualized(row):
+    if row['Type'] in ['Stocks/ETF purchase', 'Stocks/ETF sale']:
+        return row['pnl_pct'] / row['duration'] * 365 
+    if row['Type'] in ['Dividend', 'Withholding tax', 'SEC fee']:
+        return 0    
+    
+positions_df['crnt_value'] = positions_df.apply(get_crnt_value, axis = 1)
+positions_df['pnl_tr'] = positions_df.apply(get_total_return, axis = 1)
+positions_df['pnl'] = positions_df.apply(get_pnl, axis = 1)
+positions_df['pnl_pct'] = positions_df.apply(get_pnl_pct, axis = 1)
+positions_df['pnl_pct_pa'] = positions_df.apply(get_pnl_annualized, axis = 1)
+
+
+positions_df.loc[positions_df['Type'].isin(['Dividend', 'Withholding tax', 'SEC fee']), 'cost'] 
+
+
+
+positions_df.loc[positions_df['Type'].isin(['Stocks/ETF purchase', 'Stocks/ETF sale']), 'cost'] = positions_df['Amount']
+
+
+aggregated_stats = round(positions_df.groupby('Symbol').agg({
+                                                        'pnl': 'sum', 
+                                                        'pnl_tr': 'sum', 
+                                                        'pnl_pct': 'sum', 
+                                                        'cost': 'sum',  
+                                                        'mv_last': 'max', 
+                                                        'last_prc': 'max',
+                                                        'pnl_pct_pa': 'sum',
+                                                        'crnt_value': 'sum'
+                                                        }), 3 )
+
+
+aggregated_stats['pnl_tr_pct'] = aggregated_stats['pnl_tr'] / (aggregated_stats['cost'] * -1) * 100
+
+# total return annualized in % is an estimate
+aggregated_stats['pnl_tr_pct_pa'] = aggregated_stats['pnl_pct_pa'] / aggregated_stats['pnl_pct'] * aggregated_stats['pnl_tr_pct']
+
+aggregated_stats
+
+#Overall return:
+sum(aggregated_stats['pnl_tr']) / sum(aggregated_stats['cost']) * -1    
+
+#%% Prices of all relevant tickers
+
+tickers_to_download = list(position_overview_df['yf_ticker'].unique())
+tickers_to_download.extend(list(fx_dict.values()))
+
+
+
+
+#make a function for this
+history_start = '2023-01-01'
+history_end = datetime.today()
+dates_df = pd.DataFrame(index = pd.date_range(history_start, history_end))
+
+
+downloaded_prices = yf.download(tickers_to_download, start = history_start, end = history_end)['Adj Close']                        
+
+price_series = pd.merge(dates_df, downloaded_prices, left_index = True, right_on = 'Date', how = 'left')
+price_series = price_series.set_index('Date')
+price_series = price_series.fillna(method = 'ffill')
+
+
+tickers_df = pd.DataFrame(data = tickers_dict.values(), index = tickers_dict.keys()).reset_index()
+fx_df = pd.DataFrame(data = fx_dict.values(), index = fx_dict.keys()).reset_index()
+
+tickers_df.append(fx_df)
+
+price_series  = pd.melt(price_series.reset_index(), id_vars = ['Date'], value_vars = list(price_series.columns), var_name = 'yf_ticker', value_name= 'Price' )
+
+price_series = pd.merge(price_series, tickers_df.append(fx_df), left_on = 'yf_ticker', right_on = 0, how = 'outer' )
+
+
+
+
+
+del price_series[0]
+
+price_series = price_series.rename(columns = {'index' : 'Symbol', 1 : 'crncy'})
+
+#get fx rates
+
+#%% daily position
+'''
+Build Daily Position DF [date, symbol, direction, market value_eur]
+'''
+
+xtb_symbols = list(position_overview_df['Symbol'].unique())
+
+
+
+history_start = '2023-01-01'
+history_end = datetime.today()
+dates_df = pd.date_range(history_start, history_end)
+dates_df = pd.MultiIndex.from_product([dates_df, xtb_symbols], names = ['Date', 'Symbol']).to_frame(index = False)
+
+
+
+
+# filters only relevant transasctions -- #extend this to difivdends and fees
+daily_positions_df = positions_df.loc[positions_df['Type'].isin(['Stocks/ETF purchase', 'Stocks/ETF sale']), ['Date', 'Symbol', 'direction', 'crncy', 'cost']] ## lets figure out how to accoutn for dividends and other orders
+
+
+# sum up 
+daily_positions_df =  daily_positions_df.groupby(['Symbol', 'Date', 'crncy'], as_index = False)['direction', 'cost'].sum()
+daily_positions_df['outstanding_position'] = daily_positions_df.groupby(['Symbol'])['direction'].cumsum()
+daily_positions_df['cost_cumsum'] = daily_positions_df.groupby(['Symbol'])['cost'].cumsum()
+
+
+daily_positions_df['Date']  = daily_positions_df['Date'].astype('datetime64[ns]') 
+
+#Merge
+daily_positions_df = pd.merge(dates_df, daily_positions_df, left_on = ['Date', 'Symbol'], right_on = ['Date', 'Symbol'] , how = 'outer')
+daily_positions_df.loc[daily_positions_df['direction'].isna() == True,  'direction'] = 0
+
+
+# forward fill per symbol
+daily_positions_df = daily_positions_df.sort_values(by = 'Date')
+daily_positions_df['outstanding_position']  =  daily_positions_df.groupby('Symbol')['outstanding_position'].ffill()
+daily_positions_df['cost_cumsum']  =  daily_positions_df.groupby('Symbol')['cost_cumsum'].ffill()
+daily_positions_df['crncy']  =  daily_positions_df.groupby('Symbol')['crncy'].ffill()
+
+
+# replace nan with 0, but maybe I should rather drop the rows...
+daily_positions_df.loc[daily_positions_df['outstanding_position'].isna() == True,  'outstanding_position'] = 0
+
+
+#get the daily prices and fx
+daily_positions_df = pd.merge(daily_positions_df, price_series[['Date', 'Symbol', 'Price']], left_on = ['Date', 'Symbol'], right_on = ['Date', 'Symbol'] , how = 'left')
+daily_positions_df = pd.merge(daily_positions_df, price_series[['Date', 'Symbol', 'Price']], left_on = ['Date', 'crncy'], right_on = ['Date', 'Symbol'] , how = 'left')
+del daily_positions_df['Symbol_y']
+daily_positions_df.rename(columns = {'Symbol_x' : 'Symbol', 'Price_x': 'Price', 'Price_y': 'fx'}, inplace = True)
+
+daily_positions_df.loc[daily_positions_df['crncy'] == 'EUR', 'fx'] = 1 
+daily_positions_df.loc[daily_positions_df['cost'].isna() == True, 'cost'] = 0
+
+
+#MV
+daily_positions_df['MV'] = daily_positions_df['Price'] * daily_positions_df['outstanding_position'] * daily_positions_df['fx']
+daily_positions_df = daily_positions_df.dropna() 
+
+#PNL 
+daily_positions_df['PnL'] = daily_positions_df['MV'] + daily_positions_df['cost_cumsum']
+
+#Return
+daily_positions_df['Rel_Rtn'] = daily_positions_df['PnL'] / daily_positions_df['cost_cumsum'] * (-1)
+
+
+
+# Totals
+total_position = daily_positions_df[['Date',  'Symbol', 'PnL', 'MV', 'cost_cumsum']].pivot(index='Date', columns='Symbol', values=[ 'PnL', 'MV', 'cost_cumsum'])
+
+
+total_position['Total_PnL'] = total_position['PnL'].sum(axis = 1)
+total_position['Total_MV'] = total_position['MV'].sum(axis = 1)
+total_position['Total_cost_cumsum'] = total_position['cost_cumsum'].sum(axis = 1) * -1
+total_position['Total_Rel_Rtn'] = total_position['Total_PnL'] / total_position['Total_cost_cumsum'] 
+
+
+
+
+
+
+## how much would I make if I invested in a SP500?
+
+invested_amount = daily_positions_df[['Date', 'cost']].groupby('Date').sum('cost')
+
+
+index_price_series = price_series.loc[price_series['Symbol'] == 'IUSA.DE', ['Date', 'Price']]
+
+invested_amount_price =  pd.merge(invested_amount, index_price_series, how = 'left', left_on = 'Date', right_on = 'Date')
+
+invested_amount_price.loc[invested_amount_price['cost'] == 0, 'cost' ] =  0 #np.nan 
+
+invested_amount_price['direction'] = invested_amount_price['cost'] * -1 / invested_amount_price['Price'] 
+
+
+invested_amount_price['cost_cumsum'] =  invested_amount_price['cost'].cumsum() * -1
+
+
+invested_amount_price['direction_cumsum'] =  invested_amount_price['direction'].cumsum()
+
+invested_amount_price['MV'] = invested_amount_price['direction_cumsum']  * invested_amount_price['Price'] 
+
+
+
+invested_amount_price['Total_Rel_Rtn'] = invested_amount_price['MV'] / invested_amount_price['cost_cumsum'] -1
+
+
+
+
+# graph
+x_axis = total_position.index 
+y_axis1 = total_position['Total_PnL'] 
+y_axis2 = total_position['Total_MV'] 
+y_axis3 = total_position['Total_cost_cumsum'] 
+y_axis4 = total_position['Total_Rel_Rtn'] 
+y_axis5 = invested_amount_price['MV'] 
+y_axis6 = invested_amount_price['Total_Rel_Rtn']
+
+fig, ax1 = plt.subplots()
+ax1.plot(x_axis  , y_axis1, label = 'PnL' )
+ax1.plot(x_axis  , y_axis2, label = 'MV' )
+ax1.plot(x_axis  , y_axis3, label = 'Invested Capital' )
+ax1.plot(x_axis  , y_axis5, label = 'SP500' )
+
+ax1.set_ylabel('EUR')
+
+ax2 = ax1.twinx()
+
+ax2.plot(x_axis  , y_axis4, color = 'orange', label = '% Return' )
+ax2.plot(x_axis  , y_axis6, color = 'red', label = 'SP500 return'  )
+
+
+ax2.set_ylabel('% Rtn', color = 'orange')
+ax2.tick_params(labelcolor = 'orange')
+
+
+lines, labels = ax1.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax2.legend(lines + lines2, labels + labels2, loc=0)
+
+
+
+
+
+
+#%% Matplotlib
+
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+
+plt.rcParams['figure.figsize'] = [10,5]
+plt.rcParams['figure.dpi'] = 100
+plt.style.use('seaborn') # seaborn style
+mpl.rcParams['font.family'] = 'serif'
+
+
+
+daily_positions_df.loc[daily_positions_df['Symbol'] == 'AMEM.DE', ['Symbol', 'MV'] ].plot()
+daily_positions_df.loc[daily_positions_df['Symbol'] == 'IUSA.DE', ['Symbol', 'MV'] ].plot()
+
+
+## 1]  Show MV of each symbol in the same graph
+for i in list(position_overview_df['Symbol'].unique()): 
+    x_axis = daily_positions_df.loc[daily_positions_df['Symbol'] == i, 'Date']
+    y_axis = daily_positions_df.loc[daily_positions_df['Symbol'] == i, 'MV']
+
+    plt.plot(x_axis  , y_axis, label = i )
+    plt.title('MV Growth') 
+    plt.legend(loc = 0)
+    plt.savefig('MV growth.png')  
+    
+   
+## 2]  Show MV of each symbol seperately
+for i in list(position_overview_df['Symbol'].unique()): 
+    x_axis = daily_positions_df.loc[daily_positions_df['Symbol'] == i, 'Date']
+    y_axis = daily_positions_df.loc[daily_positions_df['Symbol'] == i, 'MV']
+
+    plt.plot(x_axis  , y_axis, label = i )
+    plt.title(i) 
+    plt.legend(loc = 0)
+    plt.show()
+
+
+## 2 Show MV of each symbol in the same graph Stacked
+pivoted_df = daily_positions_df[['Date',  'Symbol', 'MV']].pivot(index='Date', columns='Symbol', values='MV')
+pivoted_df.fillna(0, inplace=True)
+
+# sort it by when I invested in it....
+sorting_list = []
+for i in pivoted_df.columns:
+    sorting_list.append( [i , pivoted_df.loc[:, i].loc[pivoted_df.loc[:, i] != 0].index[0] ])
+
+sorting_list = sorted(sorting_list , key = lambda item: item[1])
+column_order = [i[0] for i in sorting_list]
+    
+fig, ax = plt.subplots()
+ax.stackplot(pivoted_df.index, pivoted_df[column_order].T.values, labels=pivoted_df[column_order].columns )
+ax.set_title('Market Value Growth')
+ax.set_ylabel('EUR')
+plt.legend(loc = 2)
+plt.show()
+
+
+
+#----------------
+
+daily_positions_df.loc[daily_positions_df['Symbol'] == 'AMEM.DE', 'PnL' ] 
+
+
+
+x_axis = daily_positions_df.loc[daily_positions_df['Symbol'] == 'IUSA.DE', 'Date' ] 
+y_axis = daily_positions_df.loc[daily_positions_df['Symbol'] == 'IUSA.DE', 'PnL' ] 
+plt.plot(x_axis  , y_axis )
+   
+  
+
+#%% -- INTEREST
+
+interest_orders_df = orders_df.loc[orders_df['Type'].isin(['Free funds interests tax', 'Free funds interests'])]
+
+interest_orders_df[interest_orders_df.Time >= '2024-01-01']['Amount'].sum()
+
+list(orders_df['Type'].unique())
+
+
+group = orders_df.groupby('Type')
+group.sum('Amount')
+
+
+# interest this year:
+
+# -- negligible
+sec_fee_orders_df = orders_df[orders_df['Type'].isin(['SEC fee'])]
+
+
+# Postion
+
+
+orders_df = orders_df[orders_df['Type'].isin(['Stocks/ETF purchase', 'Stocks/ETF sale'])]
+
+group = orders_df.groupby('Symbol')
+
+group.sum('Amount')
+
+
+
+
+
+
+
