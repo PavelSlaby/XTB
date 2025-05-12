@@ -1,694 +1,260 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sun Sep 15 13:52:39 2024
-
-@author: pavel
-"""
-
-'''
-TO DO
-Function:
-    -- calculate how much PnL would I have made if  invested it all in SP500
-    -- what if analysis on price - how much pnl/rtrn if stock reaches certain level
-
-DataSets:
-        1] orders_df: -- each cash operation. DF is extended/processes.   
-        2] tickers_df: stores static data about each symbol
-        3] price_series_df: prices series for each ticker
-        4] daily_positions_df: position for each day
-        5] pnl_items_df: other items other than the position
-        6] pnl_daily_df: daily pnl changes for each ticker
-        7] aggregated_stats: most recent stats
-    
-    
-    
-    
-     
-        
-Analytics
--- different kinds of PnL - tutal return
--- concentration
--- VaR
-
-'''
-
-#%% Import packages and prepare the environment
-
 import pandas as pd
-import yfinance as yf
-from datetime import datetime 
-import re
-import matplotlib as mpl
-import matplotlib.pyplot as plt
-import os
 import numpy as np
+import datetime
+import time
+import pathlib
+import shutil
+import warnings
+import os
 
-os.getcwd()
-os.chdir(r"F:\Investing\XTB")
+os.chdir(r'G:\STX v1\14 Risk\Svetozar\GOO Data\strategy code lorenzo')
 
-#graph params
-plt.rcParams['figure.figsize'] = [10,5]
-plt.rcParams['figure.dpi'] = 100
-plt.style.use('seaborn') # seaborn style
-mpl.rcParams['font.family'] = 'serif'
 
-#pandas params
-pd.set_option('display.max_columns', None) #to display all columns
-pd.set_option('display.width', 500)  #use the entire width to display the columns
-pd.set_option('display.max_rows', 1000)
+strategies_trading_src= r"G:\STX v1\23 Trading\Trading Desk\35. Scripts\3. Utilities\Daily PnL\Strategies.xlsx"
+main_folder = r'G:\STX v1\14 Risk\Svetozar\GOO Data\strategy code lorenzo'
 
+strategies_pnl_dest = r"G:\STX v1\14 Risk\PNL new projet 2023\GOO Strategy"
+strategies_pos_monitoring_dest = r"G:\STX v1\14 Risk\5.8 Risk Overviews\Position Monitoring"
 
 
-#%% Load source data
+price_history_start = pd.to_datetime('2017-12-31')
+prices_history_end = pd.Timestamp.now()
+dates_list = pd.DataFrame(index = pd.date_range(price_history_start, prices_history_end)).index
 
-# load the cash operations (orders)
-folder_path = r"F:\Investing\XTB"
-file_name = "\cash_operations_2025_03_09.csv"
-orders_df = pd.read_csv(folder_path + file_name,  sep = ';')
 
+#To check the difference in P&L, we need to check the difference between risk_mid_eur of today minus the risk_mid_eur of yesterday where the realisation_date is blank.
+#To get the P&L of the delivered positions we need to sum the transaction_value_eur where the realisation_date is equal to today.
+class QueryLoader():
+    def __init__(self):
+        self.desks = ["goo"]
+        self.books = ["Europe", "Benelux", "Switzerland", "Non AIB GoO", "Non Renewables", "REGO", "UK Fit", "Poland", "New Component", "Floating book (GOO)"]
+        self.df_proxy_mapping = pd.read_excel("BookData.xlsx", sheet_name = "ProxyMapping")
+        self.reporting_currency = "eur"
+        self.business_entity_code = "992"
 
-# load the cash operations (orders)
-folder_path = r"F:\Investing\XTB"
-file_name = "\cash_operations_2025_03_09.xlsx"
-orders_df = pd.read_excel(folder_path + file_name)
+        print("Loading EOD...")
+        self.df_eod = pd.read_csv("https://queryinterface.datahive.online/get_data?target_db=dwh&table=eod.positions_eod_split&dwh_current_flg=1&book=in('" + "','".join([desk.replace(" ", "%20") for desk in self.desks]) + "')&columns=position_id,matched_position_id,trade_id,type,proxy_name,proxy_category,volume,price_" + self.reporting_currency + ",production_from_year,production_from_month,labels,countries,trade_date,realisation_date,settled_at,mid_" + self.reporting_currency + "_trade_date,mid_" + self.reporting_currency + "_trade_date_reviewed,request_owner", sep = "\t")   
+        self.df_eod[["realisation_date", "trade_date", "settled_at"]] = self.df_eod[["realisation_date", "trade_date", "settled_at"]].apply(pd.to_datetime)
+        #Creating the new production year (as for UK products we have CPs instead of calendar year):
+        self.df_eod["new_production_from_year"] = self.get_production_year(self.df_eod)
+        self.df_eod["real_volume"] = self.df_eod.apply(lambda df: df["volume"] if df["type"] == "long" else -df["volume"], axis = 1)
 
+        print("Loading Proxies...")
+        self.df_proxies = pd.read_csv("https://queryinterface.datahive.online/get_data?target_db=dwh&table=reporting.v_proxy_price_history&dwh_business_entity_code=" + self.business_entity_code + "&proxy_category=in('" + "','".join([book.replace(" ", "%20") for book in self.books]) + "')&price_date=greater('2017-12-31')&columns=price_date,proxy_category,proxy_name,currency,mid,is_active", sep = "\t")
+        self.df_proxies["price_date"] = pd.to_datetime(self.df_proxies["price_date"]).dt.floor("D")
 
+        self.proxies_list = pd.DataFrame(self.df_proxies.proxy_name.unique()).iloc[:, 0]
 
+        self.df_price_proxy = pd.MultiIndex.from_product([dates_list, self.proxies_list], names=["price_date", "proxy_name"]).to_frame(index=False)
+        self.merged_prices = pd.merge(self.df_price_proxy, self.df_proxies , on=["price_date", "proxy_name"], how="left")
 
-#%% Process the source orders table
+        self.merged_prices = self.merged_prices.sort_values(by=['proxy_name', 'price_date'], ascending=[True, True])
+        self.merged_prices = self.merged_prices.fillna(method = 'ffill')
 
-'''
-Processes the orders table. Extends it by additional columns, incorporates position splits. 
-TODO: drop unsused columns?
-'''
-
-# Get volume from comment
-def get_position_from_comment(string):
-    match = re.search(r'(\d+\.?\d*)\s*/?', string)   # TODO: tohle chece zlepsit at to najde jen /
-    if match:
-        return match.group(1) 
-    return None
-
-#Get data on stock splits
-def get_splits(yticker, xtb_ticker = None, hist= '5y'):
-    ticker = yf.Ticker(yticker)
-    ticker.history(period = hist)
-    ticker_orders_df = pd.DataFrame(ticker.splits)
-    if xtb_ticker == None:
-        ticker_orders_df['Symbol'] = yticker
-    else: 
-        ticker_orders_df['Symbol'] = xtb_ticker
-    ticker_orders_df = ticker_orders_df.reset_index()
-    ticker_orders_df['Date'] = ticker_orders_df['Date'].dt.date
-    ticker_orders_df.rename(columns = {'Stock Splits' : 'Split'}, inplace = True)
-    return ticker_orders_df
-
-
-# Change dtypes for faster processing
-orders_df[['Type', 'Comment', 'Symbol']] = orders_df[['Type', 'Comment', 'Symbol']].astype('string')
-orders_df['Time'] = pd.to_datetime(orders_df['Time'], dayfirst = True)
-orders_df['Date'] = orders_df['Time'].dt.date
-
-# Extract comment - trade price
-orders_df['trade_price'] = orders_df['Comment'].str.split('@', expand = True)[1]
-
-# Determine sell/buy operations
-orders_df.loc[orders_df['Comment'].str.contains('BUY'), 'position_type'] = 'buy'
-orders_df.loc[orders_df['Comment'].str.contains('CLOSE BUY'), 'position_type'] = 'sell'
-
-#Get volume
-orders_df.loc[orders_df['Comment'].str.contains('@'), 'volume'] = orders_df['Comment'].apply(get_position_from_comment)
-orders_df['volume'] = pd.to_numeric(orders_df['volume'])
-
-# Get Direction
-orders_df['direction'] = orders_df['volume']
-orders_df.loc[orders_df['Type'].str.contains('Stocks/ETF sale') , 'direction'] = orders_df['direction'] * (-1)
-orders_df.loc[orders_df['direction'] == '', 'direction'] = 0
-orders_df['direction'] = orders_df['direction'].astype(float)
-orders_df['volume'] = orders_df['volume'].astype(float)
-
-# orders_df.groupby('Symbol').agg({'direction' : 'sum'}).round(2) # Show the volume per ticket
-
-# Stock splits adjustments 
-list_shares_w_splits = [['NVDA', 'NVDA.US']]
-
-split_orders_df = pd.DataFrame()
-
-for i in list_shares_w_splits:
-    split_orders_df = pd.concat( [split_orders_df,  get_splits(i[0], i[1]) ], ignore_index =True )
-   
-orders_df = pd.merge(orders_df, split_orders_df, on=['Date', 'Symbol'], how='outer')
-orders_df.sort_values(by = ['Symbol', 'Date'], inplace = True)
-
-for i in list_shares_w_splits:
-    orders_df.loc[orders_df['Symbol'] == i[1], ['Split']] = orders_df['Split'].bfill()
-
-orders_df.loc[orders_df['Split'].isna(), 'Split'] = 1
-
-orders_df['Split'] = orders_df['Split'].astype(float)
-
-orders_df.loc[:, 'volume'] = orders_df['volume'] * orders_df['Split']
-orders_df.loc[:, 'direction']  = orders_df['direction'] * orders_df['Split']
-
-# fill in NaN values
-orders_df.loc[orders_df['volume'].isna(), 'volume'] = 0
-orders_df.loc[orders_df['volume'] == '', 'volume'] = 0
-orders_df.loc[orders_df['direction'].isna(), 'direction'] = 0
-orders_df.loc[orders_df['direction'] == '', 'direction'] = 0
-orders_df.loc[orders_df['Type'].isna(), 'Type'] = 'Split'
-
-# drop the actuall split dates, which do not matter anymore
-orders_df.drop(orders_df.loc[orders_df['Type'] == 'Split' ].index, inplace = True)
-
-orders_df.loc[orders_df['Type'].str.contains('Stocks/ETF sale'), 'direction' ] = orders_df['volume' ].astype(float) * (-1)
-
-#change dtypes for faster processing
-orders_df[['Symbol', 'position_type']] = orders_df[['Symbol', 'position_type']].astype('string')
-
-
-orders_df.head() 
-
-
-#%%  Ticker Level Data
-
-def get_last_price(ticker):
-    return yf.Ticker(ticker).history(period = '1d').Close.values[0] 
-
-# manual mapping, xtb_ticker to yfinance ticker and crncy
-tickers_dict = {
-            'CRWD.US' : ['CRWD', 'USD'] , 
-            'DTLE.UK' : ['DTLE.L', 'EUR'],
-            'ECAR.UK' : ['ECAR.L', 'USD'],
-            'GOOGC.US' : ['GOOG', 'USD'],
-            'NVDA.US' : ['NVDA', 'USD'],
-            'ORSTED.DK' : ['ORSTED.CO', 'DKK'],
-            'VWS.DK' :  ['VWS.CO' , 'DKK'],
-            'TSLA.US': ['TSLA', 'USD'],
-            'IUSA.DE' : ['IUSA.DE', 'EUR'], # TODO: maybe I should change the ticker here
-            'XAIX.DE':  ['XAIX.DE', 'EUR'], # TODO: could also change it for (IE00BGV5VN51.SG
-            'ENR.DE':  ['ENR.DE', 'EUR'],
-            'AMEM.DE':  ['AEEM.PA', 'EUR']
-            }
-
-# crncy and respective ticker
-fx_dict = {
-           'DKK' : 'DKKEUR=X',
-           'USD' : 'USDEUR=X',
-           'EUR' : 'EUREUR=X'
-           }
-
-
-xtb_symbols_list = orders_df['Symbol'].unique()
-
-tickers_df = pd.merge(pd.DataFrame(xtb_symbols_list, columns= ['Symbol']), pd.DataFrame(data = tickers_dict).T, left_on = 'Symbol', right_index = True)
-tickers_df = tickers_df.rename(columns = {0 : 'yf_ticker', 1 : 'crncy'})
-tickers_df = tickers_df[['Symbol', 'yf_ticker','crncy']]
-
-fx_df = pd.DataFrame(data = fx_dict.values(), index = fx_dict.keys()).reset_index()
-
-fx_df.columns = ['Symbol', 'yf_ticker']
-fx_df['crncy'] = ''
-
-tickers_df = tickers_df.append(fx_df)
-
-tickers_df
-
-
-
-
-#%% Prices DF
-'''
-results in a DF with all the prices, downloads prices from yfinance
-'''
-
-history_start = '2023-01-01'
-history_end = datetime.today()
-
-tickers_to_download = list(tickers_df['yf_ticker'].unique())
-
-
-#removes EUREUR just because it temporarily does not work
-tickers_to_download.pop(len(tickers_to_download) - 1)
-
-
-
-dates_df = pd.DataFrame(index = pd.date_range(history_start, history_end))
-
-downloaded_prices = yf.download(tickers_to_download, start = history_start, end = history_end, auto_adjust=False)['Adj Close']                        
-
-price_series_df = pd.merge(dates_df, downloaded_prices, left_index = True, right_on = 'Date', how = 'left')
-price_series_df = price_series_df.set_index('Date')
-price_series_df = price_series_df.fillna(method = 'ffill')
-
-price_series_df  = pd.melt(price_series_df.reset_index(), id_vars = ['Date'], value_vars = list(price_series_df.columns), var_name = 'yf_ticker', value_name= 'Price' )
-price_series_df = pd.merge(price_series_df, tickers_df, left_on = 'yf_ticker', right_on = 'yf_ticker', how = 'outer' )
-
-price_series_df = price_series_df.set_index('Date' )
-
-
-price_series_df.tail(100)
-
-
-#%% daily position
-'''
-DF with a daily position [date, symbol, direction, market value_eur]
-'''
-# source data
-positions_df = orders_df.copy()
-xtb_symbols = tickers_df.loc[tickers_df['crncy'] != '',   'Symbol']
-history_start = '2023-01-01'
-history_end = datetime.today()
-
-## Create a DF with ticker per each date
-dates_df = pd.date_range(history_start, history_end)
-dates_df = pd.MultiIndex.from_product([dates_df, xtb_symbols], names = ['Date', 'Symbol']).to_frame(index = False)
-
-del positions_df['ID']
-del positions_df['Time']
-del positions_df['Split']
-
-# Cost = Amount, should we rename to to "invested capital?"
-positions_df.loc[positions_df['Type'].isin(['Stocks/ETF purchase', 'Stocks/ETF sale']), 'cost'] = positions_df['Amount']
-
-
-positions_df = pd.merge(positions_df, tickers_df, left_on = 'Symbol', right_on = 'Symbol')
-
-# filters only relevant transasctions -- # TODO: extend this to dividends and fees
-daily_positions_df = positions_df.loc[positions_df['Type'].isin(['Stocks/ETF purchase', 'Stocks/ETF sale']), ['Date', 'Symbol', 'direction', 'crncy', 'cost']] 
-
-# Sum up -- important if there are more orders for the same symbol in one day
-daily_positions_df =  daily_positions_df.groupby(['Symbol', 'Date', 'crncy'], as_index = False).agg({'direction': 'sum', 'cost': 'sum'})
-
-# Forward fill for each date
-daily_positions_df['Date']  = daily_positions_df['Date'].astype('datetime64[ns]') 
-daily_positions_df['outstanding_position'] = daily_positions_df.groupby(['Symbol'])['direction'].cumsum()
-
-daily_positions_df['cost']  = daily_positions_df['cost'].astype('float64')
-
-daily_positions_df['cost_cumsum'] = daily_positions_df.groupby(['Symbol'])['cost'].cumsum()
-
-
-daily_positions_df = pd.merge(dates_df, daily_positions_df, left_on = ['Date', 'Symbol'], right_on = ['Date', 'Symbol'] , how = 'outer')
-daily_positions_df.loc[daily_positions_df['direction'].isna() == True,  'direction'] = 0
-daily_positions_df = daily_positions_df.sort_values(by = 'Date')
-daily_positions_df['outstanding_position']  =  daily_positions_df.groupby('Symbol')['outstanding_position'].ffill()
-daily_positions_df['cost_cumsum']  =  daily_positions_df.groupby('Symbol')['cost_cumsum'].ffill()
-daily_positions_df['crncy']  =  daily_positions_df.groupby('Symbol')['crncy'].ffill()
-daily_positions_df.loc[daily_positions_df['outstanding_position'].isna() == True,  'outstanding_position'] = 0 # replace nan with 0, but maybe I should rather drop the rows...
-
-
-#get the daily prices and fx
-daily_positions_df = pd.merge(daily_positions_df, price_series_df[['Symbol', 'Price']].reset_index(), left_on = ['Date', 'Symbol'], right_on = ['Date', 'Symbol'] , how = 'left')
-daily_positions_df = pd.merge(daily_positions_df, price_series_df[['Symbol', 'Price']].reset_index(), left_on = ['Date', 'crncy'], right_on = ['Date', 'Symbol'] , how = 'left')
-del daily_positions_df['Symbol_y']
-daily_positions_df.rename(columns = {'Symbol_x' : 'Symbol', 'Price_x': 'Price', 'Price_y': 'fx'}, inplace = True)
-daily_positions_df.loc[daily_positions_df['crncy'] == 'EUR', 'fx'] = 1 
-daily_positions_df.loc[daily_positions_df['cost'].isna() == True, 'cost'] = 0
-
-
-## Calculate the metrics
-#MV
-daily_positions_df['MV'] = daily_positions_df['Price'] * daily_positions_df['outstanding_position'] * daily_positions_df['fx']
-
-#PNL
-daily_positions_df['pnl_ltd'] = daily_positions_df['MV'] + daily_positions_df['cost_cumsum']
-
-for i in xtb_symbols:
-    daily_positions_df.loc[daily_positions_df['Symbol'] == i, 'pnl_dtd'] = (daily_positions_df.loc[daily_positions_df['Symbol'] == i, 'pnl_ltd'] - daily_positions_df.loc[daily_positions_df['Symbol'] == i, 'pnl_ltd'].shift(1))
-
-daily_positions_df.loc[daily_positions_df['pnl_dtd'].isna(), 'pnl_dtd' ] = daily_positions_df['pnl_ltd']
-
-daily_positions_df = daily_positions_df.loc[(daily_positions_df['outstanding_position'] != 0) | (daily_positions_df['direction'] != 0)]
-
-
-daily_positions_df.head(10)
-
-#%% Other Orders - grouped
- 
-pnl_items_df = orders_df.loc[orders_df['Type'].isin(['Dividend', 'Withholding tax', 'SEC fee']) , ['Date', 'Symbol', 'Type', 'Comment', 'Amount', ] ].copy()
-pnl_items_df = pnl_items_df.groupby(['Date', 'Symbol', 'Type', 'Comment'])['Amount'].sum().reset_index()
-
-pnl_items_df.head(20)
-
-
-#%% PnL Table
-
-#merge position and other pnl data
-pnl_items_df_agg = pnl_items_df.groupby(['Date', 'Symbol'])['Amount'].sum().reset_index()
-pnl_items_df_agg['Date'] = pd.to_datetime(pnl_items_df_agg['Date'])
-
-pnl_daily_df = pd.merge(daily_positions_df, pnl_items_df_agg, left_on = ['Date', 'Symbol'], right_on = ['Date', 'Symbol'], how = 'left' )
-
-pnl_daily_df = pnl_daily_df.loc[(pnl_daily_df['outstanding_position'] != 0) | (pnl_daily_df['direction'] != 0)]
-pnl_daily_df.loc[pnl_daily_df['Amount'].isna(), 'Amount' ] = 0
-pnl_daily_df.loc[pnl_daily_df['pnl_dtd'].isna(), 'pnl_dtd' ] = 0
-
-
-pnl_daily_df = pnl_daily_df.rename(columns = {'Amount': 'other_pnl'})
-
-#Calculate metrics 
-#PNL
-pnl_daily_df['pnl_tot_dtd'] = pnl_daily_df['pnl_dtd'] + pnl_daily_df['other_pnl']
-pnl_daily_df['pnl_tot_ltd'] = pnl_daily_df.groupby(['Symbol'])['pnl_tot_dtd'].cumsum()
-pnl_daily_df['pnl_ltd'] = pnl_daily_df.groupby(['Symbol'])['pnl_dtd'].cumsum()
-pnl_daily_df['pnl_rel_ltd'] = pnl_daily_df['pnl_ltd'] / pnl_daily_df['cost_cumsum'] *-1
-pnl_daily_df['pnl_rel_tot_ltd'] = pnl_daily_df['pnl_tot_ltd'] / pnl_daily_df['cost_cumsum'] *-1
-pnl_daily_df['pnl_rel_dtd'] = pnl_daily_df['pnl_dtd'] / (pnl_daily_df['MV']   - pnl_daily_df['pnl_dtd'])
-
-
-
-# Daily Total Portfolio Values
-total_position = pnl_daily_df[['Date',  'Symbol', 'pnl_tot_ltd', 'pnl_ltd', 'MV', 'cost_cumsum', 'cost',  'pnl_tot_dtd', 'pnl_rel_dtd']].pivot(index='Date', columns='Symbol', values=[ 'pnl_tot_ltd', 'pnl_rel_dtd', 'MV', 'cost', 'cost_cumsum', 'pnl_ltd', 'pnl_tot_dtd'])
-total_position['prtf_pnl_tot_ltd'] = total_position['pnl_tot_ltd'].sum(axis = 1)
-total_position['prtf_pnl_ltd'] = total_position['pnl_ltd'].sum(axis = 1)
-total_position['prtf_mv'] = total_position['MV'].sum(axis = 1)
-total_position['prtf_cost_sum'] = total_position['cost_cumsum'].sum(axis = 1) * -1
-total_position['prtf_tot_rtn_ltd'] = total_position['prtf_pnl_tot_ltd'] / total_position['prtf_cost_sum'] 
-total_position['prtf_rtn_ltd'] = total_position['prtf_pnl_ltd'] / total_position['prtf_cost_sum'] 
-total_position['prtf_cost_dtd'] = total_position['cost'].sum(axis = 1)  * -1
-#total_position['unit_rtn_tot'] = 1 + total_position['prtf_tot_rtn_ltd']
-#total_position['unit_rtn_tot_dtd'] = total_position['unit_rtn_tot'] / total_position['unit_rtn_tot'].shift(1) -1
-
-
-
-bmk_price_series = price_series_df.loc[price_series_df['Symbol']== 'IUSA.DE', 'Price']
-
-# Convert to two-level DataFrame
-bmk_price_series = pd.DataFrame(bmk_price_series)
-bmk_price_series.columns = pd.MultiIndex.from_tuples([('Price', 'bmk')])
-
-
-bmk_price_series.head()
-
-total_position = pd.merge(total_position, bmk_price_series, how = 'left', left_index = True, right_on = 'Date' )
-
-
-total_position['Price'] = total_position['Price'] / total_position.iloc[0, total_position.columns.get_loc('Price')][0]
-
-
-
-
-
-
-#NAV
-total_position['Total_Units'] = 1
-total_position['NAV'] = 1
-    
-
-for i in range(len(total_position['Total_Units'])):
-    if i == 0: ## probably faster if I get rif of the IF and just do it beforehad, so that the if conditiona does not hvae to eb evaluated each time
-        total_position.iloc[i, total_position.columns.get_loc('Total_Units')] =  total_position.iloc[i, total_position.columns.get_loc('prtf_cost_dtd')]
-        total_position.iloc[i, total_position.columns.get_loc('NAV')] =  total_position.iloc[i, total_position.columns.get_loc('prtf_mv')][0] / total_position.iloc[i, total_position.columns.get_loc('Total_Units')][0]
-
-    else:
-        total_position.iloc[i, total_position.columns.get_loc('Total_Units')] = ( 
-                                                                                 total_position.iloc[i - 1, total_position.columns.get_loc('Total_Units')][0]
-                                                                                 + 
-                                                                                 total_position.iloc[i, total_position.columns.get_loc('prtf_cost_dtd')][0] 
-                                                                                                                                                                
-                                                                                 /total_position.iloc[i - 1, total_position.columns.get_loc('NAV')][0]
-                                                                                 )
-              
-        total_position.iloc[i, total_position.columns.get_loc('NAV')] = total_position.iloc[i, total_position.columns.get_loc('prtf_mv')][0] / total_position.iloc[i, total_position.columns.get_loc('Total_Units')][0]
-        
-        
-        
-        
-total_position['unit_rtn_tot_dtd'] = total_position['NAV'] / total_position['NAV'].shift(1) -1
-
-#%% Other Statistics
-
-risk_free_rate = 0.03
-
-#1Y Sharpe ratio
-total_position['1Y_rtn'] = total_position["unit_rtn_tot_dtd"].rolling(window=365).apply(lambda x: (x +1).prod(), raw=True) - 1 
-total_position['1Y_excess_rtn'] = total_position['1Y_rtn'] - risk_free_rate
-total_position['1Y_excess_std_dev'] = total_position['1Y_excess_rtn'].rolling(window=365).apply(lambda x: x.std(), raw=True)
-total_position['1Y_sharpe'] = total_position['1Y_excess_rtn']  / total_position['1Y_excess_std_dev'] 
-
-      
-#Biggest daily loss
-biggest_daily_loss_index = total_position.index[total_position['unit_rtn_tot_dtd'] == min(total_position['unit_rtn_tot_dtd'].fillna(0))]
-prev_day = biggest_daily_loss_index - pd.Timedelta(days = 1)
-
-loss = total_position.loc[total_position.index == biggest_daily_loss_index[0], 'prtf_mv'][0]   - total_position.loc[total_position.index == prev_day[0], 'prtf_mv'][0]
-
-print("Biggest daily loss was: " + str(round(loss, 0)) + " on: " + str(biggest_daily_loss_index[0]))
-
-
-#Biggest daily gain
-biggest_daily_loss_index = total_position.index[total_position['unit_rtn_tot_dtd'] == max(total_position['unit_rtn_tot_dtd'].fillna(0))]
-prev_day = biggest_daily_loss_index - pd.Timedelta(days = 1)
-
-loss = total_position.loc[total_position.index == biggest_daily_loss_index[0], 'prtf_mv'][0]   - total_position.loc[total_position.index == prev_day[0], 'prtf_mv'][0]
-
-print("Biggest daily gain was: " + str(round(loss, 0)) + " on: " + str(biggest_daily_loss_index[0]))
-
-
-
-#Maximum Drawdown
-max_drawdown = 1
-for i in total_position.index[1:]:
-    crnt_value = total_position.loc[total_position.index == i, 'NAV'][0]
-    prev_peak = total_position.loc[total_position.index < i, 'NAV'].max()
-    prev_peak_date = total_position.loc[total_position.index < i, 'NAV'].idxmax()
-    
-    drawdown = crnt_value / prev_peak 
-    drawdown_abs = total_position.loc[total_position.index == i, 'prtf_mv'][0] - total_position.loc[total_position.index == prev_peak_date, 'prtf_mv'][0]
-    drawdown_abs_adj = sum(total_position.loc[(total_position.index >= prev_peak_date) & (total_position.index < i), 'prtf_cost_dtd'])
-    
-    crnt_value - prev_peak
-    if drawdown <= max_drawdown:
-        max_drawdown = drawdown 
-        max_drawdown_abs = drawdown_abs - drawdown_abs_adj
-        peak_date = prev_peak_date
-        through_date = i
+        self.df_proxies = self.merged_prices
        
+        df_first_trade_date_of_proxy = self.df_eod.sort_values(by = "trade_date", ascending = False).groupby(by = ["proxy_name", "proxy_category"]).tail(1).reset_index(drop = True)
+        df_first_date_of_proxy = self.df_proxies.sort_values(by = "price_date", ascending = False).groupby(by = ["proxy_name", "proxy_category"]).tail(1).reset_index(drop = True)
 
-print("Max drawdown was: " + str(round(max_drawdown -1 , 2)) + "% (" + str(round(max_drawdown_abs, 0))   + " EUR ) from: " + str(peak_date) + " to " + str(through_date))
+        #Here we check if the first trade of a certain proxy appears before the proxy was created.
+        df = pd.merge(df_first_trade_date_of_proxy, df_first_date_of_proxy, on = "proxy_name", how = "left")
+        df_missing_prices = pd.DataFrame(columns = ["proxy_name", "price_date"])
+        #We loop through the proxies where the first trade date of a proxy is before the creation of the proxy (meaning the proxy was changed backwards) and we create a new row with the alternative proxy assigned, in a way of having a
+        #price for each day until the first trade date. The alternative proxies are in the ProxyMapping sheet in the BookData file.
+        for i, item in df.loc[(df["trade_date"] < df["price_date"])].iterrows():
+            df_missing_prices = pd.concat([df_missing_prices, pd.DataFrame({"proxy_name" : item["proxy_name"], "price_date" : pd.date_range(start = item["trade_date"], end = item["price_date"])})])
+        df = pd.merge(df_missing_prices.loc[df_missing_prices["price_date"] > datetime.datetime(2017, 12, 31)], self.df_proxy_mapping, on = "proxy_name", how = "left")
+        df = pd.merge(df, self.df_proxies, left_on = ["alternative_proxy", "price_date"], right_on = ["proxy_name", "price_date"], how = "left", suffixes = ("", "_to_delete"))
+        self.df_proxies = pd.concat([self.df_proxies, df[["price_date", "proxy_category", "proxy_name", "currency", "mid", "is_active"]].dropna(subset = ["mid"])]).reset_index(drop = True)
+ 
+       
+       
+        print("Loading FX...")
+        self.df_fx = pd.read_csv("https://queryinterface.datahive.online/get_data?target_db=dwh&table=public.dim_fx_rates&dwh_current_flg=1&dwh_business_entity_code=" + self.business_entity_code + "&base_currency=in('" + self.reporting_currency.upper() + "')&quote_currency=in('EUR','SEK','GBP','PLN','CHF','USD','NOK')&rate_date=greater('2017-12-31')&columns=rate_date,base_currency,quote_currency,rate", sep = "\t")
+        self.df_fx["rate_date"] = pd.to_datetime(self.df_fx["rate_date"]).dt.floor("D")
+        self.df_proxies = pd.merge(self.df_proxies, self.df_fx, left_on = ["price_date", "currency"], right_on = ["rate_date", "quote_currency"], how = "left").drop_duplicates()
+        self.df_proxies["mid_" + self.reporting_currency] = self.df_proxies["mid"] * self.df_proxies["rate"]
 
+        # print("Loading Contributions...")
+        # #This is the same file as the EOD but has the rows split by contribution. So if a trade has sales trader 1 with 70% contribution and sales traded 2 with 30% contribution, the trade will be split in two rows, while in the EOD it
+        # #would be in just one row.
+        # self.df_contributions = pd.read_csv("https://queryinterface.datahive.online/get_data?target_db=dwh&table=eod.position_contributions_eod&book=in('" + "','".join([desk.replace(" ", "%20") for desk in self.desks]) + "')&columns=broker,broker_percentage,position_id,trade_id,type,proxy_category,trade_date,realisation_date,volume,price_" + self.reporting_currency + ",mid_" + self.reporting_currency + "_trade_date,production_from_year,production_from_month,marktomarket_mid_value_" + self.reporting_currency, sep = "\t")
+        # self.df_contributions["trade_date"] = self.df_contributions["trade_date"].apply(pd.to_datetime)
+        # self.df_contributions["real_volume"] = self.df_contributions.apply(lambda df: df["volume"] if df["type"] == "long" else -df["volume"], axis = 1)
 
-#%% VaR 
+        # print("Loading Bid Offer data...")
+        # self.df_bid_offer = pd.read_csv("https://queryinterface.datahive.online/get_data?target_db=dwh&table=reporting.v_bid_offer_price&book=('" + "','".join([desk.replace(" ", "%20") for desk in self.desks]) + "')", sep = "\t")
 
+        print("Loading Dataset On Full Offtakes...")
+        self.df_fot = pd.read_csv("https://queryinterface.datahive.online/get_data?target_db=nl-trading&table=forecast_vs_actual&book=in('" + "','".join([desk.replace(" ", "%20") for desk in self.desks]) + "')", sep = "\t")
 
-
-var_date = pnl_daily_df.iloc[-1]['Date']
-
-
-crnt_mv =    pnl_daily_df.loc[pnl_daily_df['Date'] == var_date, 'MV'].sum()          
-
-
-weights = pnl_daily_df.loc[pnl_daily_df['Date'] == var_date, ['Symbol', 'MV']]
-weights['weight'] = weights['MV'] / crnt_mv
-
-var = price_series_df.loc[price_series_df['Symbol'].isin(weights['Symbol'].tolist()), ['Price', 'Symbol']].reset_index()
-
-var = pd.merge(var, weights[['Symbol', 'weight']], left_on = 'Symbol', right_on = 'Symbol', how = 'left' )
-
-var['prtf_mv'] = var['weight'] = var['Price']
-
-var = var.dropna()
-
-returns = pd.DataFrame()
-returns['nav'] =  var.groupby('Date').agg({'prtf_mv' : 'sum'})
-returns['rtn'] = returns['nav'] / returns['nav'].shift(1) - 1
-
-var = np.percentile(returns['rtn'][1:], 5) #first value is nan, thats why the slice
-
-var_abs = crnt_mv * var
-
-#lets do some backtesting....
-
-prtf_rtns = total_position['unit_rtn_tot_dtd'] - 1
-
-sum(prtf_rtns < var)
-prtf_rtns.shape[0]
-
-backtest = sum(prtf_rtns < var) / prtf_rtns.shape[0]
+        print("All queries loaded.")
 
 
-print(var)
-print(backtest)
+## Pavel: the following function does not seem to be used anywhere
+    # def get_daily_eod(self, pos_date):
+    #     df_eod = pd.read_csv("https://queryinterface.datahive.online/get_data?target_db=dwh&table=eod.positions_eod_history_" + str(pos_date.year) + "{:02d}".format(pos_date.month) + "{:02d}".format(pos_date.day) + "&dwh_current_flg=1&book=in('" + "','".join(self.desks) + "')&columns=book,position_status,position_id,position_match_id,matched_position_id,type,volume,production_from_year,production_from_month,proxy_category,request_owner,realisation_date,price_" + self.reporting_currency + ",price,currency,trade_date,marktomarket_mid_value_" + self.reporting_currency + ",proxy_name,selection_type,risk_mid_" + self.reporting_currency + ",original_proxy_risk_mid_" + self.reporting_currency + ",transaction_value_" + self.reporting_currency, sep = "\t")
+    #     df_eod[["realisation_date", "trade_date"]] = df_eod[["realisation_date", "trade_date"]].apply(pd.to_datetime)
+    #     df_eod["new_production_from_year"] = self.get_production_year(df_eod)
+    #     df_eod["real_marktomarket_mid_value_" + self.reporting_currency] = df_eod.apply(lambda df: df["marktomarket_mid_value_" + self.reporting_currency] if df["type"] == "long" else -df["marktomarket_mid_value_" + self.reporting_currency], axis = 1)
+    #     df_eod["real_volume"] = df_eod.apply(lambda df: df["volume"] if df["type"] == "long" else -df["volume"], axis = 1)
+    #     return df_eod
+
+    def get_production_year(self, df):
+        uk_books = ["REGO", "UK Fit"]
+        pjm_books = ["PJM_C1", "PJM_C2", "PJM_SREC"]
+        ge_books = ["GE", "Non_GE"]
+        futures_books = ["CA_LCFS", "RGGI", "WCI_CCA", "WCI_WCA"]
+        df["new_production_from_year"] = df.apply(lambda df: ("CP" + str(df["production_from_year"] - 1)[2:4] if df["production_from_month"] >= 4 else "CP" + str(df["production_from_year"] - 2)[2:4]) if df["proxy_category"] in uk_books else
+                                             (df["production_from_year"] + 1 if df["production_from_month"] >= 6 else df["production_from_month"]) if df["proxy_category"] in pjm_books else
+                                             (df["production_from_year"] + 1 if df["production_from_month"] >= 7 else df["production_from_month"]) if df["proxy_category"] in ge_books else
+                                             (2000 + int(df["proxy_name"][-2:])) if df["proxy_category"] in futures_books else
+                                             df["production_from_year"], axis = 1)
+        return df["new_production_from_year"]
 
 
-#%% Other under construction
+class Strategies():
+    def __init__(self, query_loader):
+        self.query_loader = query_loader
+        self.start_date = max(pd.read_excel("StrategiesData.xlsx")["date"]) + datetime.timedelta(days = 1) #datetime.datetime(2022, 4, 1)#
+        self.end_date = datetime.datetime.today()
+        self.reporting_currency = query_loader.reporting_currency
+        self.df_strategies = pd.read_excel("Strategies.xlsx")
+        self.df_strategies["date"] = pd.to_datetime(self.df_strategies["date"])        
+        self.df_proxies = self.query_loader.df_proxies
+        self.df_hist_pnl = pd.read_excel("StrategiesData.xlsx", sheet_name = "Strategies")
 
-total_position.to_excel('output.xlsx') 
+        self.labels = {"TUV_SUD_EE" : {"strategy" : "LabelSpread", "substrategy" : "TuvSud-AIB"},
+                       "bramiljoval": {"strategy" : "LabelSpread", "substrategy" : "BMV-AIB"}}
+        
+        self.proxies = {"AT Hydro" : {"strategy" : "CountrySpread", "substrategy" : "Austria-AIB"},
+                        "DE Hydro" : {"strategy" : "CountrySpread", "substrategy" : "Germany-AIB"},
+                        "DE Wind" : {"strategy" : "CountrySpread", "substrategy" : "Germany-AIB"},
+                        "French monthly" : {"strategy" : "CountrySpread", "substrategy" : "France-AIB"},
+                        "Spanish Domestic" : {"strategy" : "CountrySpread", "substrategy" : "SpanishDomestic-AIB"}}
+
+    def get_strategy_details(self, proxy, subkey):
+        for key in self.proxies.keys():
+            if key in proxy:
+                return self.proxies[key][subkey]
+        return float(nan)
+
+    def generate_strategies_trades(self, start_date):
+        #This function generates the trades (for country spread) in the past. Each time there is a trade with a proxy included in self.proxies, a correspondent trade with opposite sign at the Mid of Europe Hydro is created, setting up
+        #the spread in the past. We should periodically run this function to add the new country spread trades that happen.
+        df = self.query_loader.df_eod
+        df = df.loc[(df["proxy_category"] == "Europe") & (df["trade_date"] >= start_date)]
+        df["liquid_proxy"] = df["production_from_year"].apply(lambda df: "Europe Hydro " + str(df))
+        df = pd.merge(df, self.df_proxies, how = "left", left_on = ["liquid_proxy", "trade_date"], right_on = ["proxy_name", "price_date"], suffixes=('_eod', '_proxies'))
+        df = df.dropna(subset = ["price_" + self.reporting_currency, "mid_" + self.reporting_currency])
+
+        df = df.loc[df["proxy_name_eod"].str.contains("|".join(list(self.proxies.keys())), na = False)]
+        df["strategy"] = df["proxy_name_eod"].apply(lambda df: self.get_strategy_details(df, "strategy"))
+        df["substrategy"] = df["proxy_name_eod"].apply(lambda df: self.get_strategy_details(df, "substrategy"))
+
+        df_premium = df[["type", "proxy_category_eod", "production_from_year", "trade_date", "strategy", "substrategy", "volume", "proxy_name_eod", "price_" + self.reporting_currency]]
+        df_standard = df[["type", "proxy_category_eod", "production_from_year", "trade_date", "strategy", "substrategy", "volume", "liquid_proxy", "mid_" + self.reporting_currency]]
+        df_standard["type"] = df_standard["type"].apply(lambda df: "short" if df == "long" else "long")
+        df_standard.columns = df_premium.columns
+
+        #https://stackoverflow.com/questions/26205922/calculate-weighted-average-using-a-pandas-dataframe
+        #https://stackoverflow.com/questions/14529838/apply-multiple-functions-to-multiple-groupby-columns
+        df_premium = df_premium.groupby(by = ["type", "proxy_category_eod", "production_from_year", "strategy", "substrategy", "trade_date", "proxy_name_eod"]).apply(lambda df: pd.Series({"volume" : df["volume"].sum(), "wap" : np.average(df["price_" + self.reporting_currency], weights = df["volume"])}, index = ["volume", "wap"])).reset_index()
+        df_standard = df_standard.groupby(by = ["type", "proxy_category_eod", "production_from_year", "strategy", "substrategy", "trade_date", "proxy_name_eod"]).apply(lambda df: pd.Series({"volume" : df["volume"].sum(), "wap" : np.average(df["price_" + self.reporting_currency], weights = df["volume"])}, index = ["volume", "wap"])).reset_index()
+        df = pd.concat([df_premium, df_standard]).reset_index(drop = True)
+        df["real_volume"] = df.apply(lambda df: -df["volume"] if df["type"] == "short" else df["volume"], axis = 1)
+        df = df.sort_values(by = ["trade_date", "volume"])
+        df = df[["trade_date", "proxy_category_eod", "strategy", "substrategy", "proxy_name_eod", "production_from_year", "real_volume", "wap"]]
+        return df
+
+    def get_premiums_of_strategies_with_no_proxy(self):
+        #This function calculates the premium / discount we bought the products in self.proxies and self.label, compared to the Hydro price. This also works for products for which we don't have the proxy (example, the Tuv Sud positions
+        #when we didn't have the Tuv Sud proxy).
+        df = self.query_loader.df_eod
+        df = df.loc[df["proxy_category"] == "Europe"]
+        df["liquid_proxy"] = df["production_from_year"].apply(lambda df: "Europe Hydro " + str(int(df)))
+        df = pd.merge(df, self.df_proxies, how = "left", left_on = ["liquid_proxy", "trade_date"], right_on = ["proxy_name", "price_date"], suffixes=('_eod', '_proxies'))
+        df["premium"] = df["price_" + self.reporting_currency] - df["mid_" + self.reporting_currency]
+        df = df.dropna(subset = "premium")
+
+        df_eod_proxies = df.loc[df["proxy_name_eod"].str.contains("|".join(list(self.proxies.keys())), na = False)]
+        df_eod_proxies["premium_name"] = df_eod_proxies["proxy_name_eod"]
+
+        df_eod_labels = df.loc[(df["labels"].str.contains("|".join(list(self.labels.keys())), na = False)) & (~df["labels"].str.contains("TUV_SUD_EE_", na = False)) & (~df["countries"].str.contains("IS", na = False))]
+        df_eod_labels["premium_name"] = df_eod_labels.apply(lambda df: "".join([label for label in list(self.labels.keys()) if label in df["labels"]]) + " " + str(df["production_from_year"]), axis = 1)
+
+        df_eod_tuv_sud_is = df.loc[(df["labels"].str.contains("TUV_SUD_EE", na = False)) & (~df["labels"].str.contains("TUV_SUD_EE_", na = False)) & (df["countries"].str.contains("IS", na = False))]
+        df_eod_tuv_sud_is["premium_name"] = df_eod_tuv_sud_is.apply(lambda df: "TUV_SUD_EE IS " + str(df["production_from_year"]), axis = 1)
+
+        df = pd.concat([df_eod_proxies, df_eod_labels, df_eod_tuv_sud_is])
+        return df[["position_id", "type", "trade_date", "volume", "premium_name", "premium"]]    
+
+    def get_strategies_eod(self, pos_date):
+        df = self.df_strategies.loc[self.df_strategies["date"] <= pos_date]
+        df["current_date"] = pos_date
+        df = pd.merge(df, self.df_proxies[["price_date", "proxy_name", "mid_" + self.reporting_currency]], how = "left", left_on = ["current_date", "proxy"], right_on = ["price_date", "proxy_name"])
+        df["risk_mid_" + self.reporting_currency] = df["position"] * (df["mid_" + self.reporting_currency] - df["price"])
+        return df
+
+    def create_historical_pnl(self):
+        #This works similarly to the Directional P&L seen before (PnL Class). I create a EOD of the strategies (with get_strategies_eod function), then for each strategy I calculate the difference between risk_mid_eur_t and risk_mid_eur_t_minus_1
+        df_final = pd.DataFrame(columns = ["book", "strategy", "substrategy", "year", "proxy", "position_t", "pnl", "type_of_pnl", "date"])
+        for n in range(int((self.end_date - self.start_date).days)):
+            pos_date_t = self.start_date + datetime.timedelta(days = n)
+            pos_date_t_minus_1 = self.start_date + datetime.timedelta(days = n - 1)
+            print("Calculating Strategies P&L On " + str(pos_date_t))
+            df_t = self.get_strategies_eod(pos_date_t)
+            df_t_minus_1 = self.get_strategies_eod(pos_date_t_minus_1)
+
+            #Calculating P&L from new trades on the strategies (Market Making P&L).
+            df_new_trades = df_t.loc[(df_t["date"] == pos_date_t), ["book", "strategy", "substrategy", "proxy", "year", "risk_mid_" + self.reporting_currency]].groupby(by = ["book", "strategy", "substrategy", "proxy", "year"]).sum().round().reset_index()
+            df_new_trades["type_of_pnl"] = "pnl_new_trades"
+            df_new_trades["date"] = pos_date_t
+            df_new_trades["position_t"] = 0
+            df_new_trades = df_new_trades.rename(columns = {"risk_mid_" + self.reporting_currency : "pnl"})
+
+            #Calculating Unrealized P&L from the Strategies (as difference between risk_mid_eur on t and t_minus_1).
+            df_t = df_t.loc[(df_t["date"] != pos_date_t), ["book", "strategy", "substrategy", "proxy", "year", "risk_mid_" + self.reporting_currency, "position"]].groupby(by = ["book", "strategy", "substrategy", "proxy", "year"]).sum().round().reset_index()
+            df_t_minus_1 = df_t_minus_1[["book", "strategy", "substrategy", "proxy", "year", "risk_mid_" + self.reporting_currency, "position"]].groupby(by = ["book", "strategy", "substrategy", "proxy", "year"]).sum().round().reset_index()
+
+            df_old_trades = pd.merge(df_t, df_t_minus_1, how = "left", on = ["book", "strategy", "substrategy", "proxy", "year"], suffixes = ("_t", "_t_minus_1")).fillna(0)
+            df_old_trades["pnl"] = df_old_trades["risk_mid_" + self.reporting_currency + "_t"] - df_old_trades["risk_mid_" + self.reporting_currency + "_t_minus_1"]
+            df_old_trades["type_of_pnl"] = "pnl_unrealized"
+            df_old_trades["date"] = pos_date_t
+
+            df_final = pd.concat([df_final, pd.concat([df_new_trades[["book", "strategy", "substrategy", "year", "proxy", "position_t", "pnl", "type_of_pnl", "date"]], df_old_trades[["book", "strategy", "substrategy", "year", "proxy", "position_t", "pnl", "type_of_pnl", "date"]]]).reset_index(drop = True)]).reset_index(drop = True)
+
+        df_final = df_final.loc[df_final[["pnl", "position_t"]].sum(axis = 1) != 0] #Remove rows where P&L and Position is 0
+        df_final = df_final[["date", "book", "strategy", "substrategy", "year", "proxy", "type_of_pnl", "pnl", "position_t"]]
+        df_final = df_final.rename(columns = {"position_t" : "position"})
+        df_final = pd.concat([self.df_hist_pnl, df_final]).reset_index(drop = True)
+        return df_final
 
 
-
-#%% Portfolio Most Recent Overview
-aggregated_stats = round(pnl_daily_df.groupby('Symbol').agg({
-                                                        'pnl_tot_ltd': 'last',
-                                                        'pnl_rel_tot_ltd': 'last', 
-                                                        'pnl_dtd': 'last', 
-                                                        'outstanding_position': 'last', 
-                                                        'Price': 'last', 
-                                                        'MV': 'last',  
-                                                        'cost_cumsum': 'last'  
-                                                        }), 3 )
-
-
-aggregated_stats['MV_%'] = aggregated_stats['MV'] / sum(aggregated_stats['MV']) * 100
-
-#Statistics:
-prtf_tot_rtn_ltd =  round(total_position['prtf_tot_rtn_ltd'][-1] * 100, 4)
-nav_per_share = round(total_position['NAV'].tail(1)[0], 4)
-prtf_pnl_tot_ltd = round(total_position['prtf_pnl_tot_ltd'].tail(1)[0], 0)
-prtf_mv =  round(total_position['prtf_mv'].tail(1)[0], 0)
-invested_own_funds = round(total_position['prtf_cost_sum'].tail(1)[0], 0)
-prtf_tot_rtn_1y = round(total_position['1Y_rtn'][-1] * 100, 4)
-prtf_sharpe_1y = round(total_position['1Y_sharpe'].tail(1)[0], 4)
-
-
-
-print("Total Portfolio Return LTD is: " + str(prtf_tot_rtn_ltd) + "%" )
-print("Total Portfolio Return 1Y is: " + str(prtf_tot_rtn_1y) + "%" )
-
-print("NAV per share is: " + str(nav_per_share) )
-print("LTD Total PnL is: " + str(prtf_pnl_tot_ltd) )
-print("Sharpe 1Y is: " + str(prtf_sharpe_1y) )
-
-
-print("MV portfolio is: " + str(prtf_mv) )
-print("Currently invested own funds: " + str(invested_own_funds) )
-
-
-
-print(aggregated_stats)
-
-
-#%% How much would the pnl be if I invested in X?
-# assuming I would invest exactly the same amount of money I did at the same times I did, just in a different ticker...
-
-benchmark_symbol = 'IUSA.DE'
-
-def simulate_bmk_rtn(benchmark_symbol):  
-    invested_amount = daily_positions_df[['Date', 'cost']].groupby('Date').sum('cost')
-    benchmark_price_series_df = price_series_df.loc[price_series_df['Symbol'] == benchmark_symbol, ['Price']]
+def main():
     
-    invested_amount_price =  pd.merge(invested_amount, benchmark_price_series_df, how = 'left', left_on = 'Date', right_on = 'Date')
-    invested_amount_price.loc[invested_amount_price['cost'] == 0, 'cost' ] =  0 #np.nan 
-    invested_amount_price['direction'] = invested_amount_price['cost'] * -1 / invested_amount_price['Price'] 
-    invested_amount_price['cost_cumsum'] =  invested_amount_price['cost'].cumsum() * -1
-    invested_amount_price['direction_cumsum'] =  invested_amount_price['direction'].cumsum()
-    invested_amount_price['MV'] = invested_amount_price['direction_cumsum']  * invested_amount_price['Price'] 
-    invested_amount_price['Total_Rel_Rtn'] = invested_amount_price['MV'] / invested_amount_price['cost_cumsum'] -1
     
-    # graph
-    x_axis = total_position.index 
-    y_axis1 = total_position['prtf_pnl_ltd'] 
-    y_axis2 = total_position['prtf_mv'] 
-    y_axis3 = total_position['prtf_cost_sum'] 
-    y_axis4 = total_position['prtf_tot_rtn_ltd'] 
-    y_axis5 = invested_amount_price['MV'] 
-    y_axis6 = invested_amount_price['Total_Rel_Rtn']
-    
-    fig, ax1 = plt.subplots()
-    ax1.plot(x_axis  , y_axis1, label = 'PnL' )
-    ax1.plot(x_axis  , y_axis2, label = 'MV' )
-    ax1.plot(x_axis  , y_axis3, label = 'Invested Capital' )
-    ax1.plot(x_axis  , y_axis5, label = benchmark_symbol )
-    
-    ax1.set_ylabel('EUR')
-    
-    ax2 = ax1.twinx()
-    ax2.plot(x_axis  , y_axis4, color = 'orange', label = '% Return' )
-    ax2.plot(x_axis  , y_axis6, color = 'red', label = str(benchmark_symbol) + ' return'  )
-    
-    ax2.set_ylabel('% Rtn', color = 'orange')
-    ax2.tick_params(labelcolor = 'orange')
-    
-    lines, labels = ax1.get_legend_handles_labels()
-    lines2, labels2 = ax2.get_legend_handles_labels()
-    ax2.legend(lines + lines2, labels + labels2, loc=0)
-    
-    prtf_tot_rtn_last  = total_position['prtf_tot_rtn_ltd'].tail(1)[0] * 100
-    prtf_rtn_last  = total_position['prtf_rtn_ltd'].tail(1)[0] * 100
-    Total_Rel_Rtn_last = invested_amount_price['Total_Rel_Rtn'].tail(1)[0]  * 100
-    
-    print("Benchmark symbol is: " + benchmark_symbol)
-    print("note that this simulation does not consider dividends....")
-    print("Portfolio return was: " + str(prtf_rtn_last.round(3)) + "%")
-    print("Portfolio total return was: " + str(prtf_tot_rtn_last.round(3)) + "%")
-    print("Simulated benchmark return was: " + str(Total_Rel_Rtn_last.round(3)) + "%")
-    print("Excess non-dividend return was: " + str((prtf_rtn_last - Total_Rel_Rtn_last).round(3)) + "%")
-
-
-# for i in  xtb_symbols_list:
-#     print(i)
-#     simulate_bmk_rtn(i)
-#     print(" ")
-
-
-simulate_bmk_rtn('IUSA.DE')
-
-#%% Matplotlib
-
-def plot_mv(xtb_symbol):
-    daily_positions_df.loc[daily_positions_df['Symbol'] == xtb_symbol, ['Symbol', 'MV'] ].plot()
-
-
-
-plot_mv('ENR.DE')
-
-
-## 1]  Show MV of each symbol in the same graph
-for i in list(pnl_daily_df['Symbol'].unique()): 
-    x_axis = pnl_daily_df.loc[pnl_daily_df['Symbol'] == i, 'Date']
-    y_axis = pnl_daily_df.loc[pnl_daily_df['Symbol'] == i, 'MV']
-
-    plt.plot(x_axis  , y_axis, label = i )
-    plt.title('MV Growth') 
-    plt.legend(loc = 0)
-    plt.savefig('MV growth.png')  
-    
-   
-## 2]  Show MV of each symbol seperately
-for i in list(pnl_daily_df['Symbol'].unique()): 
-    x_axis = pnl_daily_df.loc[pnl_daily_df['Symbol'] == i, 'Date']
-    y_axis = pnl_daily_df.loc[pnl_daily_df['Symbol'] == i, 'MV']
-
-    plt.plot(x_axis  , y_axis, label = i )
-    plt.title(i) 
-    plt.legend(loc = 0)
-    plt.show()
-
-
-## 3 Show MV of each symbol in the same graph Stacked
-pivoted_df = pnl_daily_df[['Date',  'Symbol', 'MV']].pivot(index='Date', columns='Symbol', values='MV')
-pivoted_df.fillna(0, inplace=True)
-
-# sort it by when I invested in it....
-sorting_list = []
-for i in pivoted_df.columns:
-    sorting_list.append( [i , pivoted_df.loc[:, i].loc[pivoted_df.loc[:, i] != 0].index[0] ])
-
-sorting_list = sorted(sorting_list , key = lambda item: item[1])
-column_order = [i[0] for i in sorting_list]
-    
-fig, ax = plt.subplots()
-ax.stackplot(pivoted_df.index, pivoted_df[column_order].T.values, labels=pivoted_df[column_order].columns )
-ax.set_title('Market Value Growth')
-ax.set_ylabel('EUR')
-plt.legend(loc = 2)
-plt.show()
-
-
-
-   
+    shutil.copy(strategies_trading_src, main_folder + "\Strategies.xlsx")
   
 
-#%% -- INTEREST
-interest_orders_df = orders_df.loc[orders_df['Type'].isin(['Free funds interests tax', 'Free funds interests'])]
-interest_orders_df[interest_orders_df.Time >= '2024-01-01']['Amount'].sum()
+    
+    
+    warnings.filterwarnings("ignore")
 
+    query_loader = QueryLoader()
 
+    s = Strategies(query_loader)
+    df_strategies = s.create_historical_pnl()
+    # df_strategies_with_no_proxy = s.get_premiums_of_strategies_with_no_proxy()#pd.read_excel("StrategiesData.xlsx", sheet_name = "StrategiesAveragePremiums")#
+    #s.generate_strategies_trades(datetime.datetime(2019, 4, 1)).to_excel("Strategy_Trades.xlsx")
+    writer = pd.ExcelWriter("StrategiesData.xlsx")
+    df_strategies.to_excel(writer, sheet_name = "Strategies", index = False)
+    # df_strategies_with_no_proxy.to_excel(writer, sheet_name = "StrategiesAveragePremiums", index = False)
+    writer.close()
+    
+    
+    shutil.copy(r"StrategiesData.xlsx", strategies_pnl_dest + "\StrategiesData.xlsx")
+    shutil.copy(r"StrategiesData.xlsx", strategies_pos_monitoring_dest + "\StrategiesData.xlsx")
 
-#%% Run daily report
-
-print("Total Portfolio Return LTD is: " + str(portoflio_ltd_tot_rtn) + "%" )
-aggregated_stats
-
-
-
+if __name__ == "__main__":
+    main()
