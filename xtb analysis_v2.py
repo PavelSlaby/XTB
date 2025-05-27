@@ -58,7 +58,7 @@ pd.set_option('display.max_rows', 1000)
 
 
 # set the folder path
-folder_path = r"C:\Users\pslaby\OneDrive - STX Commodities B.V\Desktop\osobni\investicni_vypisy"
+folder_path = r"C:\Users\pslaby\......................\Desktop\osobni\investicni_vypisy"
 folder_path2 = r"F:\Investing\XTB"
 
 if  os.path.exists(folder_path): 
