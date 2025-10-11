@@ -19,7 +19,7 @@ import pandas as pd
 import logging
 
 os.getcwd()
-os.chdir(r"F:\_Python\XTB_Python_project")
+os.chdir(r"D:\Investing\XTB\Repos")
 
 #imports local modules
 import library.data_loader as data_loader # Loads all the data
@@ -106,7 +106,7 @@ history_end = settings.history_end
 
 
 # Prepares data
-outputs = load_data(xtb_outputs_source)
+outputs = load_data(xtb_input)
 
 
 # stores the outputs just in case they are needed later
