@@ -19,6 +19,7 @@ import pandas as pd
 import logging
 
 os.getcwd()
+os.chdir(r"D:\Investing\XTB\Repos")
 
 #imports local modules
 import library.data_loader as data_loader # Loads all the data
