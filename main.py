@@ -19,7 +19,6 @@ import pandas as pd
 import logging
 
 os.getcwd()
-os.chdir(r"D:\Investing\XTB\Repos")
 
 #imports local modules
 import library.data_loader as data_loader # Loads all the data
@@ -93,7 +92,6 @@ def create_metrics(outputs):
 #%% actual running of functions
 
 # Folder paths
-xtb_input = settings.xtb_input
 
 # manual mappings for tickers and fx, xtb_ticker to yfinance ticker and crncy
 tickers_dict = settings.tickers_dict
@@ -106,7 +104,6 @@ history_end = settings.history_end
 
 
 # Prepares data
-outputs = load_data(xtb_input)
 
 
 # stores the outputs just in case they are needed later
