@@ -93,6 +93,9 @@ def create_metrics(outputs):
 #%% actual running of functions
 
 # Folder paths
+xtb_input = settings.xtb_outputs_source
+
+xtb_input = settings.xtb_input
 
 # manual mappings for tickers and fx, xtb_ticker to yfinance ticker and crncy
 tickers_dict = settings.tickers_dict
@@ -105,7 +108,7 @@ history_end = settings.history_end
 
 
 # Prepares data
-
+outputs = load_data(xtb_input)
 
 # stores the outputs just in case they are needed later
 orders_df       = outputs["orders_df"]
