@@ -231,10 +231,10 @@ def download_tickers_prices(tickers_df, history_start, history_end):
     
         logger.info("prices were downloaded successfully")
 
-    except Exception as e:
+  except Exception as e:
         logger.error(f"prices were not downloaded: {e}")
 
-    return price_series_df
+  return price_series_df
 
 
 

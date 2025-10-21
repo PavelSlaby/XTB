@@ -22,7 +22,10 @@ os.getcwd()
 os.chdir(r"D:\Investing\XTB\Repos")
 
 #imports local modules
-import library.data_loader as data_loader # Loads all the data
+
+
+import library.data_loader as data_loader
+
 import library.daily_position as daily_position #Creates daily position for each share
 import library.create_metrics_history  as create_metrics_history  # creates portfolio view
 import library.settings  as settings  # constants/paths
