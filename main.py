@@ -22,10 +22,7 @@ os.getcwd()
 os.chdir(r"D:\Investing\XTB\Repos")
 
 #imports local modules
-
-
-import library.data_loader as data_loader
-
+import library.data_loader as data_loader #imports all data
 import library.daily_position as daily_position #Creates daily position for each share
 import library.create_metrics_history  as create_metrics_history  # creates portfolio view
 import library.settings  as settings  # constants/paths
@@ -278,7 +275,9 @@ def simulate_bmk_rtn(benchmark_symbol):
     prtf_tot_rtn_last  = total_position['prtf_tot_rtn_ltd'].tail(1)[0] * 100
     prtf_rtn_last  = total_position['prtf_rtn_ltd'].tail(1)[0] * 100
     Total_Rel_Rtn_last = invested_amount_price['Total_Rel_Rtn'].tail(1)[0]  * 100
-    
+
+    plt.show()
+
     print("Benchmark symbol is: " + benchmark_symbol)
     print("note that this simulation does not consider DIVIDENTs....")
     print("Portfolio return was: " + str(prtf_rtn_last.round(3)) + "%")
