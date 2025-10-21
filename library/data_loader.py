@@ -216,7 +216,7 @@ def download_tickers_prices(tickers_df, history_start, history_end):
             
         dates_df = pd.DataFrame(index = pd.date_range(history_start, history_end))
         
-        downloaded_prices = yf.download(tickers_to_download, start = history_start, period = '1d', end = history_end, auto_adjust=False)['Adj Close']                        
+        downloaded_prices = yf.download(tickers_to_download, start = history_start, end = history_end, auto_adjust=False)['Adj Close']
     
         price_series_df = pd.merge(dates_df, downloaded_prices, left_index = True, right_on = 'Date', how = 'left')
         price_series_df = price_series_df.set_index('Date')
