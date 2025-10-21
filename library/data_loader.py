@@ -18,7 +18,7 @@ output = read_orders_df(output)
 
 '''
 
-#-- import of packageg
+#-- import of packages
 import glob
 import os
 import pandas as pd
