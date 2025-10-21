@@ -26,10 +26,11 @@ import re
 import yfinance as yf
 import logging
 import sys
+import library.settings  as settings
 
 logger = logging.getLogger(__name__)
 
-source = r"F:\Investing\XTB\XTB_portfolio_output"
+source = settings.xtb_input
 
 
 #--- Checks ---
@@ -208,12 +209,13 @@ def read_orders_df(orders_df):
 def download_tickers_prices(tickers_df, history_start, history_end):
     # downloads prices for all tickers in the input DF and outputs them in a desired format    
     
-    try:
+  try:
         tickers_to_download = list(tickers_df['yf_ticker'].unique())
     
         #removes EUREUR just because it temporarily does not work
         tickers_to_download.pop(len(tickers_to_download) - 1)
             
+
         dates_df = pd.DataFrame(index = pd.date_range(history_start, history_end))
         
         downloaded_prices = yf.download(tickers_to_download, start = history_start, end = history_end, auto_adjust=False)['Adj Close']
@@ -233,7 +235,6 @@ def download_tickers_prices(tickers_df, history_start, history_end):
         logger.error(f"prices were not downloaded: {e}")
 
     return price_series_df
-
 
 
 

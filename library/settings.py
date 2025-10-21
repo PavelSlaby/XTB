@@ -16,6 +16,7 @@ import logging
 xtb_input = r"D:\Investing\XTB\XTB_portfolio_output" #source of the xtb excel file
 project_dir = r"D:/_Python/XTB_Python_project"
 
+
 # manual mappings for tickers and fx, xtb_ticker to yfinance ticker and crncy
 tickers_dict = {
                 'CRWD.US'  : ['CRWD', 'USD'] , 
