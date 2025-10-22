@@ -52,7 +52,7 @@ def print_crnt_prtf_stats(portfolio, price_series_df):
     portfolio.get_biggest_daily_gain()
     portfolio.get_maximum_drawdown()
 
-    var = portfolio.calc_hvar(portfolio.daily_asset_metrics, price_series_df)
+    var = create_metrics_history.calc_hvar(portfolio.daily_asset_metrics, price_series_df)
     print(f"1 Day VaR is: {var[0]*100}% or {format_accounting(var[1])} EUR")
 
     portfolio.backtest_hvar(portfolio.daily_portfolio_metrics, var[0])
