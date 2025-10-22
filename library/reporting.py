@@ -108,6 +108,39 @@ def overview_per_ticker(portfolio):
 
 
 
+plt.rcParams['figure.figsize'] = [8, 8]
+
+
+
+def graph_assets_mv(xtb_symbol, portfolio, one_graph = True):
+    daily_asset_metrics = portfolio.daily_asset_metrics
+
+    if one_graph == True:
+        ## 2]  Show MV of each symbol in one graph
+          for i in list(daily_asset_metrics['Symbol'].unique()):
+            x_axis = daily_asset_metrics.loc[daily_asset_metrics['Symbol'] == i, 'Date']
+            y_axis = daily_asset_metrics.loc[daily_asset_metrics['Symbol'] == i, 'MV']
+
+            plt.plot(x_axis, y_axis, label=i)
+            plt.title('MV Growth')
+            plt.legend(loc=0)
+
+        plt.show()
+
+    elif one_graph == False:             print('aa')
+
+
+        for i in list(daily_asset_metrics['Symbol'].unique()):
+            x_axis = daily_asset_metrics.loc[daily_asset_metrics['Symbol'] == i, 'Date']
+            y_axis = daily_asset_metrics.loc[daily_asset_metrics['Symbol'] == i, 'MV']
+
+            plt.plot(x_axis, y_axis, label=i)
+            plt.title(i)
+            plt.legend(loc=0)
+            plt.show()
+
+
+
 
 
 
