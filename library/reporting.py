@@ -10,6 +10,7 @@ reporting
 import library.settings  as settings
 import logging
 from tabulate import tabulate
+import library.create_metrics_history  as create_metrics_history  # creates portfolio view
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +56,7 @@ def print_crnt_prtf_stats(portfolio, price_series_df):
     var = create_metrics_history.calc_hvar(portfolio.daily_asset_metrics, price_series_df)
     print(f"1 Day VaR is: {var[0]*100}% or {format_accounting(var[1])} EUR")
 
-    portfolio.backtest_hvar(portfolio.daily_portfolio_metrics, var[0])
+    create_metrics_history.backtest_hvar(portfolio.daily_portfolio_metrics, var[0])
 
 
 
