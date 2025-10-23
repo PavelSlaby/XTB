@@ -118,7 +118,7 @@ orders_df       = outputs["orders_df"]
 tickers_df      = outputs["tickers_df"]
 price_series_df = outputs["price_series_df"]
 
-data_loader.check_constants_exist(tickers_dict, orders_df)
+data_loader.check_constants_exist(tickers_df, orders_df)
 
 
 # creates metrics object, it is and object that contains 2 DF - daily asset metrics and daily portfolio metrics

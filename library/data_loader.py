@@ -3,19 +3,9 @@ data_loader.py
 
 This module contains function to load data (CSV, yfinance) and to clean them
 
-functions:
-    load_prtf_file  - load the csv file
-    read_orders_df  - data cleaning
-
-todo: 
-        it could be object oriented....
-        check the warnings
-        generalize the splits, so that it works not only for nvidia
-
-output = load_prtf_file(folder_path = source)
-output = read_orders_df(output)
-
-
+TODO:
+    generalize the splits, so that it works not only for nvidia, but also chargepoint etc...
+    create tools to export data or to even store in a DB
 '''
 
 #-- import of packages
@@ -89,7 +79,7 @@ def load_prtf_file(file_name = None, folder_path = None):
 #--- Data Cleaning functions
 def trim_xtb_xls(prtf_file):
     '''
-    trims the loaded file of unneccasry stuff - emptry rows etc...
+    trims the loaded file of unnecessary stuff - empty rows etc...
     '''
     prtf_file = prtf_file.drop(['Unnamed: 0', 'Unnamed: 7'], axis = 1)
     prtf_file = prtf_file.drop([prtf_file.index[-1]], axis = 0)
@@ -97,7 +87,7 @@ def trim_xtb_xls(prtf_file):
 
 def get_position_from_comment(string):
     '''
-    Seperates volume from comment
+    Separates volume from comment
     '''
     match = re.search(r'(\d+\.?\d*)\s*/?', string)
     if match:
@@ -207,40 +197,44 @@ def read_orders_df(orders_df):
 
 #--- Prices DF
 def download_tickers_prices(tickers_df, history_start, history_end):
-    # downloads prices for all tickers in the input DF and outputs them in a desired format    
-    
-  try:
+    '''
+        downloads prices for all tickers in the input DF and outputs them in a desired format
+    '''
+    try:
         tickers_to_download = list(tickers_df['yf_ticker'].unique())
-    
+
         #removes EUREUR just because it temporarily does not work
         tickers_to_download.pop(len(tickers_to_download) - 1)
-            
+
 
         dates_df = pd.DataFrame(index = pd.date_range(history_start, history_end))
-        
+
         downloaded_prices = yf.download(tickers_to_download, start = history_start, end = history_end, auto_adjust=False)['Adj Close']
-    
+
         price_series_df = pd.merge(dates_df, downloaded_prices, left_index = True, right_on = 'Date', how = 'left')
         price_series_df = price_series_df.set_index('Date')
         price_series_df = price_series_df.ffill()
-        
+
         price_series_df = pd.melt(price_series_df.reset_index(), id_vars = ['Date'], value_vars = list(price_series_df.columns), var_name = 'yf_ticker', value_name= 'Price' )
         price_series_df = pd.merge(price_series_df, tickers_df, left_on = 'yf_ticker', right_on = 'yf_ticker', how = 'outer' )
-        
+
         price_series_df = price_series_df.set_index('Date')
-    
+
         logger.info("prices were downloaded successfully")
 
-  except Exception as e:
+    except Exception as e:
         logger.error(f"prices were not downloaded: {e}")
 
-  return price_series_df
+    return price_series_df
 
 
 
 #--- Ticker Level Data Loader
 def create_tickers_df(tickers_dict, fx_dict):
-    # checks whether the input data has the right format, and then outputs a DF with the static data with tickers
+    '''
+    checks whether the input data has the right format, and then outputs a DF with the static data with tickers
+    '''
+
     if not isinstance(tickers_dict, dict):
         logger.warning("first input must be tickers dictionary")
     elif not isinstance(fx_dict, dict):
@@ -265,7 +259,9 @@ def create_tickers_df(tickers_dict, fx_dict):
 
 
 def check_constants_exist(tickers_df, orders_df):
-    # checks constants exist - if not, they need to be set up in settings.py
+    '''
+    checks that constants exist - if not, they need to be set up in settings.py
+    '''
     orders_set = set(orders_df['Symbol'].dropna())
     constants_set = set(tickers_df['Symbol'])
 
