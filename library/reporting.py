@@ -7,10 +7,11 @@ reporting
 @author: pavel
 """
 
-import library.settings  as settings
 import logging
 from tabulate import tabulate
 import library.create_metrics_history  as create_metrics_history  # creates portfolio view
+import matplotlib.pyplot as plt
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -59,10 +60,6 @@ def print_crnt_prtf_stats(portfolio, price_series_df):
     create_metrics_history.backtest_hvar(portfolio.daily_portfolio_metrics, var[0])
 
 
-
-
-
-
 def overview_per_ticker(portfolio):
     aggregated_stats = portfolio.daily_asset_metrics.groupby('Symbol').agg({
                                                             'pnl_tot_ltd': 'last',
@@ -100,10 +97,68 @@ def overview_per_ticker(portfolio):
     print(tabulate(aggregated_stats, headers=aggregated_stats.columns, numalign="center", tablefmt="grid"))
 
 
+def simulate_bmk_rtn(benchmark_symbol, portfolio, price_series_df):
+    daily_portfolio_metrics = portfolio.daily_portfolio_metrics
+
+    daily_positions_df = portfolio.daily_asset_metrics
+
+    invested_amount = daily_positions_df[['Date', 'cost']].groupby('Date').sum('cost')
+    benchmark_price_series_df = price_series_df.loc[price_series_df['Symbol'] == benchmark_symbol, ['Price']]
+
+    invested_amount_price = pd.merge(invested_amount, benchmark_price_series_df, how='left', left_on='Date',
+                                     right_on='Date')
+    invested_amount_price.loc[invested_amount_price['cost'] == 0, 'cost'] = 0  # np.nan
+    invested_amount_price['direction'] = invested_amount_price['cost'] * -1 / invested_amount_price['Price']
+    invested_amount_price['cost_cumsum'] = invested_amount_price['cost'].cumsum() * -1
+    invested_amount_price['direction_cumsum'] = invested_amount_price['direction'].cumsum()
+    invested_amount_price['MV'] = invested_amount_price['direction_cumsum'] * invested_amount_price['Price']
+    invested_amount_price['Total_Rel_Rtn'] = invested_amount_price['MV'] / invested_amount_price['cost_cumsum'] - 1
+
+    # graph
+    x_axis = daily_portfolio_metrics.index
+    y_axis1 = daily_portfolio_metrics['prtf_pnl_ltd']
+    y_axis2 = daily_portfolio_metrics['prtf_mv']
+    y_axis3 = daily_portfolio_metrics['prtf_cost_sum']
+    y_axis4 = daily_portfolio_metrics['prtf_tot_rtn_ltd']
+    y_axis5 = invested_amount_price['MV']
+    y_axis6 = invested_amount_price['Total_Rel_Rtn']
+
+    fig, ax1 = plt.subplots()
+    ax1.plot(x_axis, y_axis1, label='PnL')
+    ax1.plot(x_axis, y_axis2, label='MV')
+    ax1.plot(x_axis, y_axis3, label='Invested Capital')
+    ax1.plot(x_axis, y_axis5, label=benchmark_symbol)
+
+    ax1.set_ylabel('EUR')
+
+    ax2 = ax1.twinx()
+    ax2.plot(x_axis, y_axis4, color='orange', label='% Return')
+    ax2.plot(x_axis, y_axis6, color='red', label=str(benchmark_symbol) + ' return')
+
+    ax2.set_ylabel('% Rtn', color='orange')
+    ax2.tick_params(labelcolor='orange')
+
+    lines, labels = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax2.legend(lines + lines2, labels + labels2, loc=0)
+
+    prtf_tot_rtn_last = daily_portfolio_metrics['prtf_tot_rtn_ltd'].tail(1)[0] * 100
+    prtf_rtn_last = daily_portfolio_metrics['prtf_rtn_ltd'].tail(1)[0] * 100
+    total_rel_rtn_last = invested_amount_price['Total_Rel_Rtn'].tail(1)[0] * 100
+
+    plt.show()
+
+    print("Benchmark symbol is: " + benchmark_symbol)
+    print("note that this simulation does not consider DIVIDENTs....")
+    print("Portfolio return was: " + str(prtf_rtn_last.round(3)) + "%")
+    print("Portfolio total return was: " + str(prtf_tot_rtn_last.round(3)) + "%")
+    print("Simulated benchmark return was: " + str(total_rel_rtn_last.round(3)) + "%")
+    print("Excess non-DIVIDENT return was: " + str((prtf_rtn_last - total_rel_rtn_last).round(3)) + "%")
 
 
-
-
+def plot_ticker_mv(xtb_symbol, portfolio):
+    portfolio.daily_asset_metrics.loc[portfolio.daily_asset_metrics['Symbol'] == xtb_symbol, ['Symbol', 'MV'] ].plot()
+    plt.show()
 
 
 
@@ -112,25 +167,23 @@ plt.rcParams['figure.figsize'] = [8, 8]
 
 
 
-def graph_assets_mv(xtb_symbol, portfolio, one_graph = True):
+def graph_assets_mv(portfolio, one_graph = True):
     daily_asset_metrics = portfolio.daily_asset_metrics
 
-    if one_graph == True:
-        ## 2]  Show MV of each symbol in one graph
-          for i in list(daily_asset_metrics['Symbol'].unique()):
+    if one_graph:
+        # All symbols in one graph
+        for i in daily_asset_metrics['Symbol'].unique():
             x_axis = daily_asset_metrics.loc[daily_asset_metrics['Symbol'] == i, 'Date']
             y_axis = daily_asset_metrics.loc[daily_asset_metrics['Symbol'] == i, 'MV']
-
             plt.plot(x_axis, y_axis, label=i)
-            plt.title('MV Growth')
-            plt.legend(loc=0)
 
+        plt.title('MV Growth')
+        plt.legend(loc=0)
         plt.show()
 
-    elif one_graph == False:             print('aa')
-
-
-        for i in list(daily_asset_metrics['Symbol'].unique()):
+    else:
+        # Separate graph per symbol
+        for i in daily_asset_metrics['Symbol'].unique():
             x_axis = daily_asset_metrics.loc[daily_asset_metrics['Symbol'] == i, 'Date']
             y_axis = daily_asset_metrics.loc[daily_asset_metrics['Symbol'] == i, 'MV']
 
@@ -161,9 +214,6 @@ def graph_mv_stacked(portfolio):
     ax.set_ylabel('EUR')
     plt.legend(loc=2)
     plt.show()
-
-
-
 
 
 

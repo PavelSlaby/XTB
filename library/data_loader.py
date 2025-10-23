@@ -264,7 +264,7 @@ def create_tickers_df(tickers_dict, fx_dict):
 
 
 
-def check_constants_exist():
+def check_constants_exist(tickers_df, orders_df):
     # checks constants exist - if not, they need to be set up in settings.py
     orders_set = set(orders_df['Symbol'].dropna())
     constants_set = set(tickers_df['Symbol'])
