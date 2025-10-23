@@ -140,6 +140,29 @@ def graph_assets_mv(xtb_symbol, portfolio, one_graph = True):
             plt.show()
 
 
+def graph_mv_stacked(portfolio):
+    ##  Show MV of each symbol in the same graph Stacked
+    daily_asset_metrics = portfolio.daily_asset_metrics
+
+    pivoted_df = daily_asset_metrics[['Date', 'Symbol', 'MV']].pivot(index='Date', columns='Symbol', values='MV')
+    pivoted_df.fillna(0, inplace=True)
+
+    # sort it by when I invested in it....
+    sorting_list = []
+    for i in pivoted_df.columns:
+        sorting_list.append([i, pivoted_df.loc[:, i].loc[pivoted_df.loc[:, i] != 0].index[0]])
+
+    sorting_list = sorted(sorting_list, key=lambda item: item[1])
+    column_order = [i[0] for i in sorting_list]
+
+    fig, ax = plt.subplots()
+    ax.stackplot(pivoted_df.index, pivoted_df[column_order].T.values, labels=pivoted_df[column_order].columns)
+    ax.set_title('Market Value Growth')
+    ax.set_ylabel('EUR')
+    plt.legend(loc=2)
+    plt.show()
+
+
 
 
 
