@@ -35,7 +35,11 @@ tickers_dict = {
                 'CHPT.US'  : ['CHPT','USD'],
                 'OD7F.DE'  : ['OD7F.MU','EUR'], #there are several similat tickets
                 'RGTI.US'  : ['RGTI','USD'],
-                'IONQ.US'  : ['IONQ','USD']
+                'IONQ.US'  : ['IONQ','USD'],
+                'RACE.IT'  : ['RACE.MI','EUR'],
+                'MLTX.US'  : ['MLTX','USD']
+
+
                }
 
 fx_dict = {

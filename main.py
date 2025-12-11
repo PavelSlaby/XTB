@@ -158,8 +158,8 @@ reporting.graph_mv_stacked(portfolio)
   
 
 #%% -- INTEREST
-interest_orders_df = orders_df.loc[orders_df['Type'].isin(['Free funds interests tax', 'Free funds interests'])]
-interest_orders_df[interest_orders_df.Time >= '2024-01-01']['Amount'].sum()
+#interest_orders_df = orders_df.loc[orders_df['Type'].isin(['Free funds interests tax', 'Free funds interests'])]
+#interest_orders_df[interest_orders_df.Time >= '2024-01-01']['Amount'].sum()
 
 
 
