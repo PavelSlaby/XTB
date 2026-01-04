@@ -13,12 +13,12 @@ import logging
 
 
 # Folder paths
-xtb_input = r"D:\Investing\XTB\XTB_portfolio_output" #source of the xtb excel file
-project_dir = r"D:/_Python/XTB_Python_project"
+XTB_INPUT_FILEPATH = r"D:\Investing\XTB\XTB_portfolio_output" #source of the xtb excel file
+PROJECT_DIRECTORY = r"D:/_Python/XTB_Python_project"
 
 
 # manual mappings for tickers and fx, xtb_ticker to yfinance ticker and crncy
-tickers_dict = {
+TICKERS_DICT = {
                 'CRWD.US'  : ['CRWD', 'USD'] , 
                 'DTLE.UK'  : ['DTLE.L', 'EUR'],
                 'ECAR.UK'  : ['ECAR.L', 'USD'],
@@ -42,15 +42,15 @@ tickers_dict = {
 
                }
 
-fx_dict = {
+FX_DICT = {
            'DKK' : 'DKKEUR=X',
            'USD' : 'USDEUR=X',
            'EUR' : 'EUREUR=X'
            }
 
 # History timeframe
-history_start = '2023-01-01'
-history_end = datetime.today()
+CALCS_START_DATE = '2023-01-01'
+CALCS_END_DATE = datetime.today()
 
 
 
