@@ -1,4 +1,5 @@
 '''
+# this is a docstring
 data_loader.py
 
 This module contains function to load data (CSV, yfinance) and to clean them
