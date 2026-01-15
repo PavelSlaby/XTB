@@ -72,20 +72,20 @@ def create_metrics(outputs):
     tickers_df      = outputs["tickers_df"]
     price_series_df = outputs["price_series_df"]
     
-    # creates DF with daily position        
+    # Creates DF with daily position
     daily_positions_df = daily_position.create_position_df(orders_df, tickers_df, price_series_df, history_start)
 
-    #prepares pnl related items from Daily Position DF
+    # Prepares pnl related items from Daily Position DF
     pnl_items_obj = create_metrics_history.PnlItems(orders_df)
     pnl_items_obj.prepare()
     
-    #creates new object from the daily position DF. New object has a daily_asset_metrics DF which looks at each asset individually
+    # Creates new object from the daily position DF. New object has a daily_asset_metrics DF which looks at each asset individually
     metrics_obj = create_metrics_history.DailyMetrics(daily_positions_df)
     metrics_obj.calculate_mv()
     metrics_obj.include_other_pnl_items(pnl_items_obj.pnl_items_df_agg)
     metrics_obj.calc_pnl()
     
-    #creates daily_portfolio_metrics DF which has portfolio level data
+    # Creates daily_portfolio_metrics DF which has portfolio level data
     metrics_obj.create_daily_portfolio_metrics()
     metrics_obj.establish_bmk(price_series_df, 'IUSA.DE')    
     metrics_obj.calc_prtf_nav()
@@ -137,9 +137,6 @@ daily_portfolio_metrics = portfolio.daily_portfolio_metrics
 
 
 #%% Reporting
-
-
-
 reporting.overview_per_ticker(portfolio)
 
 reporting.print_crnt_prtf_stats(portfolio, price_series_df)
