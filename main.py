@@ -13,6 +13,10 @@ Project structure: https://github.com/pslaby/portfolio-analytics
 '''
 
 
+'''
+    TODO: sortino ratio
+
+'''
 
 
 
@@ -132,7 +136,7 @@ portfolio = create_metrics(outputs)
 #daily position
 daily_position = daily_position.create_position_df(orders_df, tickers_df, price_series_df, history_start) # this step is duplicated
 
-#pnl pet each asset
+#pnl per each asset
 daily_asset_metrics = portfolio.daily_asset_metrics
 
 #daily portfolio metrics
