@@ -17,6 +17,7 @@ import re
 import yfinance as yf
 import logging
 import sys
+import numpy as np
 import library.settings  as settings
 
 logger = logging.getLogger(__name__)
@@ -271,3 +272,17 @@ def check_constants_exist(tickers_df, orders_df):
     if len(unassigned_tickers) != 0:
         logger.warning(f'Constants should be updated in setting.py, process will continue but {unassigned_tickers} will not be included')
     pass
+
+
+def load_financials(datapoints: list, tickers: dict):
+    ticker_static_info = pd.DataFrame(columns=datapoints)
+    ticker_static_info.insert(0, "ticker", list(tickers.keys()))
+
+    for ticker in tickers:
+        for datapoint in datapoints:
+            try:
+                ticker_static_info.loc[ticker_static_info['ticker'] == ticker, datapoint] = \
+                yf.Ticker(tickers[ticker][0]).info[datapoint]
+            except:
+                ticker_static_info.loc[ticker_static_info['ticker'] == ticker, datapoint] = np.nan
+    return ticker_static_info
