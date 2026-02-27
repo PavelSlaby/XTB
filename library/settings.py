@@ -48,6 +48,26 @@ FX_DICT = {
            'EUR' : 'EUREUR=X'
            }
 
+# datapoints to be downloaded from yfinance
+DATAPOINTS = [    'sector',
+                  'previousClose',
+                  'beta',
+                  'trailingPE',
+                  'forwardPE',
+                  'priceToBook',
+                  'trailingEps',
+                  'epsForward',
+                  'epsCurrentYear',
+                  'targetMedianPrice',
+                  'targetLowPrice',
+                  'targetHighPrice',
+                  'lastDividendValue',
+                  'enterpriseToEbitda',
+                  'returnOnEquity',
+                  'freeCashflow'
+                  ]
+
+
 # History timeframe
 CALCS_START_DATE = '2023-01-01'
 CALCS_END_DATE = datetime.today()
