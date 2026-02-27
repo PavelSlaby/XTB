@@ -274,6 +274,7 @@ def check_constants_exist(tickers_df, orders_df):
     pass
 
 
+
 def load_financials(datapoints: list, tickers: dict):
     ticker_static_info = pd.DataFrame(columns=datapoints)
     ticker_static_info.insert(0, "ticker", list(tickers.keys()))
