@@ -25,6 +25,7 @@ import os
 import pandas as pd
 import logging
 
+
 os.getcwd()
 os.chdir(r"D:\Investing\XTB\Repos")
 
@@ -157,15 +158,8 @@ reporting.graph_assets_mv(portfolio, one_graph = True)
 
 reporting.graph_mv_stacked(portfolio)
 
+print("wait.....")
 
-   
-  
-
-#%% -- INTEREST
-#interest_orders_df = orders_df.loc[orders_df['Type'].isin(['Free funds interests tax', 'Free funds interests'])]
-#interest_orders_df[interest_orders_df.Time >= '2024-01-01']['Amount'].sum()
-
-
-
+reporting.print_financials(tickers_dict , settings.TICKERS_DICT)
 
 

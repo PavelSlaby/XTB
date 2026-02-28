@@ -12,10 +12,14 @@ from tabulate import tabulate
 import library.create_metrics_history  as create_metrics_history  # creates portfolio view
 import matplotlib.pyplot as plt
 import pandas as pd
+import library.data_loader as data_loader
+import library.settings as settings
 
 logger = logging.getLogger(__name__)
 
-def format_accounting(value: float) -> str:
+def format_accounting(value) -> str:
+    if pd.isna(value):
+        return ""
     return f"{int(value):,}"
 
 
@@ -217,3 +221,10 @@ def graph_mv_stacked(portfolio):
 
 
 
+def print_financials(tickers, datapoints):
+    financials = data_loader.load_financials(datapoints, tickers)
+
+   # financials.loc[:, 'freeCashflow'] = financials.loc[:, 'freeCashflow'].astype("Int64").apply(format_accounting)
+    financials.loc[:, 'returnOnEquity'] = financials.loc[:, 'returnOnEquity'].apply(format_percent)
+
+    print(tabulate(financials, headers=financials.columns, numalign="center", tablefmt="grid", showindex=False))
