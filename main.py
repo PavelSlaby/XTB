@@ -160,6 +160,6 @@ reporting.graph_mv_stacked(portfolio)
 
 print("wait.....")
 
-reporting.print_financials(tickers_dict , settings.TICKERS_DICT)
+reporting.print_financials(settings.TICKERS_DICT , settings.DATAPOINTS)
 
 

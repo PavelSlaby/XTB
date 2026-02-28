@@ -285,5 +285,5 @@ def load_financials(datapoints: list, tickers: dict):
                 ticker_static_info.loc[ticker_static_info['ticker'] == ticker, datapoint] = \
                 yf.Ticker(tickers[ticker][0]).info[datapoint]
             except:
-                ticker_static_info.loc[ticker_static_info['ticker'] == ticker, datapoint] = pd.NA
+                ticker_static_info.loc[ticker_static_info['ticker'] == ticker, datapoint] = np.nan
     return ticker_static_info
