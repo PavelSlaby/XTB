@@ -162,4 +162,7 @@ print("wait.....")
 
 reporting.print_financials(settings.TICKERS_DICT , settings.DATAPOINTS)
 
+# ej
+
+
 
