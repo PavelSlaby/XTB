@@ -221,6 +221,11 @@ def graph_mv_stacked(portfolio):
 
 
 
+# reporting.print_financials(tickers_dict , settings.DATAPOINTS)
+#
+# tickers = settings.TICKERS_DICT
+# datapoints = settings.DATAPOINTS
+
 def print_financials(tickers, datapoints):
     financials = data_loader.load_financials(datapoints, tickers)
 
