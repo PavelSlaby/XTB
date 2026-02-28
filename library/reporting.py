@@ -224,7 +224,7 @@ def graph_mv_stacked(portfolio):
 def print_financials(tickers, datapoints):
     financials = data_loader.load_financials(datapoints, tickers)
 
-   # financials.loc[:, 'freeCashflow'] = financials.loc[:, 'freeCashflow'].astype("Int64").apply(format_accounting)
+    financials.loc[:, 'freeCashflow'] = financials.loc[:, 'freeCashflow'].astype("Int64").apply(format_accounting)
     financials.loc[:, 'returnOnEquity'] = financials.loc[:, 'returnOnEquity'].apply(format_percent)
 
     print(tabulate(financials, headers=financials.columns, numalign="center", tablefmt="grid", showindex=False))
