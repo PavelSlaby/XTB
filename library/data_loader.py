@@ -100,6 +100,7 @@ def get_splits(yticker, xtb_ticker = None, hist= '5y'):
     '''
     gets data on stock splits
     '''
+
     ticker = yf.Ticker(yticker)
     ticker.history(period = hist)
     ticker_orders_df = pd.DataFrame(ticker.splits)
@@ -109,7 +110,7 @@ def get_splits(yticker, xtb_ticker = None, hist= '5y'):
         ticker_orders_df['symbol'] = xtb_ticker
     ticker_orders_df = ticker_orders_df.reset_index()
     ticker_orders_df['date'] = ticker_orders_df['Date'].dt.date
-    ticker_orders_df.rename(columns = {'Stock Splits' : 'Split'}, inplace = True)
+    ticker_orders_df.rename(columns = {'Stock Splits' : 'split'}, inplace = True)
     return ticker_orders_df
 
 #-- Main function cleaning the orders DF...
@@ -127,7 +128,9 @@ def read_orders_df(orders_df):
                 get_position_from_comment()
                 trim_xtb_xls()       
     '''
-    try: 
+    try:
+        orders_df = prtf_file_loaded
+
         orders_df = trim_xtb_xls(orders_df)
 
         orders_df = orders_df.rename(columns = {'Type': 'type', 'Comment':'comment', 'Symbol':'symbol', 'Time':'time', 'Amount':'amount'})
@@ -166,24 +169,24 @@ def read_orders_df(orders_df):
         orders_df.sort_values(by = ['symbol', 'date'], inplace = True)
         
         for i in list_shares_w_splits:
-            orders_df.loc[orders_df['symbol'] == i[1], ['Split']] = orders_df['Split'].bfill()
+            orders_df.loc[orders_df['symbol'] == i[1], ['split']] = orders_df['split'].bfill()
         
-        orders_df.loc[orders_df['Split'].isna(), 'Split'] = 1
+        orders_df.loc[orders_df['split'].isna(), 'split'] = 1
         
-        orders_df['Split'] = orders_df['Split'].astype(float)
+        orders_df['split'] = orders_df['split'].astype(float)
         
-        orders_df.loc[:, 'volume'] = orders_df['volume'] * orders_df['Split']
-        orders_df.loc[:, 'direction']  = orders_df['direction'] * orders_df['Split']
+        orders_df.loc[:, 'volume'] = orders_df['volume'] * orders_df['split']
+        orders_df.loc[:, 'direction']  = orders_df['direction'] * orders_df['split']
         
         # fill in NaN values
         orders_df.loc[orders_df['volume'].isna(), 'volume'] = 0
         orders_df.loc[orders_df['volume'] == '', 'volume'] = 0
         orders_df.loc[orders_df['direction'].isna(), 'direction'] = 0
         orders_df.loc[orders_df['direction'] == '', 'direction'] = 0
-        orders_df.loc[orders_df['type'].isna(), 'type'] = 'Split'
+        orders_df.loc[orders_df['type'].isna(), 'type'] = 'split'
         
         # drop the actual split dates, which do not matter anymore
-        orders_df.drop(orders_df.loc[orders_df['type'] == 'Split' ].index, inplace = True)
+        orders_df.drop(orders_df.loc[orders_df['type'] == 'split' ].index, inplace = True)
         
         orders_df.loc[orders_df['type'].str.contains('Stock sale'), 'direction' ] = orders_df['volume' ].astype(float) * (-1)
         
