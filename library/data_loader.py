@@ -104,11 +104,11 @@ def get_splits(yticker, xtb_ticker = None, hist= '5y'):
     ticker.history(period = hist)
     ticker_orders_df = pd.DataFrame(ticker.splits)
     if xtb_ticker == None:
-        ticker_orders_df['Symbol'] = yticker
+        ticker_orders_df['symbol'] = yticker
     else: 
-        ticker_orders_df['Symbol'] = xtb_ticker
+        ticker_orders_df['symbol'] = xtb_ticker
     ticker_orders_df = ticker_orders_df.reset_index()
-    ticker_orders_df['Date'] = ticker_orders_df['Date'].dt.date
+    ticker_orders_df['date'] = ticker_orders_df['Date'].dt.date
     ticker_orders_df.rename(columns = {'Stock Splits' : 'Split'}, inplace = True)
     return ticker_orders_df
 
@@ -129,26 +129,28 @@ def read_orders_df(orders_df):
     '''
     try: 
         orders_df = trim_xtb_xls(orders_df)
-    
+
+        orders_df = orders_df.rename(columns = {'Type': 'type', 'Comment':'comment', 'Symbol':'symbol', 'Time':'time', 'Amount':'amount'})
+
         # Change dtypes for faster processing
-        orders_df[['Type', 'Comment', 'Symbol']] = orders_df[['Type', 'Comment', 'Symbol']].astype('string')
-        orders_df['Time'] = pd.to_datetime(orders_df['Time'], dayfirst = True)
-        orders_df['Date'] = orders_df['Time'].dt.date
+        orders_df[['type', 'comment', 'symbol']] = orders_df[['type', 'comment', 'symbol']].astype('string')
+        orders_df['time'] = pd.to_datetime(orders_df['time'], dayfirst = True)
+        orders_df['date'] = orders_df['time'].dt.date
         
         # Extract comment - trade price
-        orders_df['trade_price'] = orders_df['Comment'].str.split('@', expand = True)[1]
+        orders_df['trade_price'] = orders_df['comment'].str.split('@', expand = True)[1]
         
         # Determine sell/buy operations
-        orders_df.loc[orders_df['Comment'].str.contains('BUY'), 'position_type'] = 'buy'
-        orders_df.loc[orders_df['Comment'].str.contains('CLOSE BUY'), 'position_type'] = 'sell'
+        orders_df.loc[orders_df['comment'].str.contains('BUY'), 'position_type'] = 'buy'
+        orders_df.loc[orders_df['comment'].str.contains('CLOSE BUY'), 'position_type'] = 'sell'
         
         #Get volume
-        orders_df.loc[orders_df['Comment'].str.contains('@'), 'volume'] = orders_df['Comment'].apply(get_position_from_comment)
+        orders_df.loc[orders_df['comment'].str.contains('@'), 'volume'] = orders_df['comment'].apply(get_position_from_comment)
         orders_df['volume'] = pd.to_numeric(orders_df['volume'])
         
         # Get Direction
         orders_df['direction'] = orders_df['volume']
-        orders_df.loc[orders_df['Type'].str.contains('Stock sale') , 'direction'] = orders_df['direction'] * (-1)
+        orders_df.loc[orders_df['type'].str.contains('Stock sale') , 'direction'] = orders_df['direction'] * (-1)
         orders_df.loc[orders_df['direction'] == '', 'direction'] = 0
         orders_df['direction'] = orders_df['direction'].astype(float)
         orders_df['volume'] = orders_df['volume'].astype(float)
@@ -160,11 +162,11 @@ def read_orders_df(orders_df):
         for i in list_shares_w_splits:
             split_orders_df = pd.concat( [split_orders_df,  get_splits(i[0], i[1]) ], ignore_index =True )
            
-        orders_df = pd.merge(orders_df, split_orders_df, on=['Date', 'Symbol'], how='outer')
-        orders_df.sort_values(by = ['Symbol', 'Date'], inplace = True)
+        orders_df = pd.merge(orders_df, split_orders_df, on=['date', 'symbol'], how='outer')
+        orders_df.sort_values(by = ['symbol', 'date'], inplace = True)
         
         for i in list_shares_w_splits:
-            orders_df.loc[orders_df['Symbol'] == i[1], ['Split']] = orders_df['Split'].bfill()
+            orders_df.loc[orders_df['symbol'] == i[1], ['Split']] = orders_df['Split'].bfill()
         
         orders_df.loc[orders_df['Split'].isna(), 'Split'] = 1
         
@@ -178,15 +180,15 @@ def read_orders_df(orders_df):
         orders_df.loc[orders_df['volume'] == '', 'volume'] = 0
         orders_df.loc[orders_df['direction'].isna(), 'direction'] = 0
         orders_df.loc[orders_df['direction'] == '', 'direction'] = 0
-        orders_df.loc[orders_df['Type'].isna(), 'Type'] = 'Split'
+        orders_df.loc[orders_df['type'].isna(), 'type'] = 'Split'
         
-        # drop the actuall split dates, which do not matter anymore
-        orders_df.drop(orders_df.loc[orders_df['Type'] == 'Split' ].index, inplace = True)
+        # drop the actual split dates, which do not matter anymore
+        orders_df.drop(orders_df.loc[orders_df['type'] == 'Split' ].index, inplace = True)
         
-        orders_df.loc[orders_df['Type'].str.contains('Stock sale'), 'direction' ] = orders_df['volume' ].astype(float) * (-1)
+        orders_df.loc[orders_df['type'].str.contains('Stock sale'), 'direction' ] = orders_df['volume' ].astype(float) * (-1)
         
         #change dtypes for faster processing
-        orders_df[['Symbol', 'position_type']] = orders_df[['Symbol', 'position_type']].astype('string')
+        orders_df[['symbol', 'position_type']] = orders_df[['symbol', 'position_type']].astype('string')
     
         logger.info("XTB file was processed successfully")
     
@@ -213,14 +215,14 @@ def download_tickers_prices(tickers_df, history_start, history_end):
 
         downloaded_prices = yf.download(tickers_to_download, start = history_start, end = history_end, auto_adjust=False)['Adj Close']
 
-        price_series_df = pd.merge(dates_df, downloaded_prices, left_index = True, right_on = 'Date', how = 'left')
-        price_series_df = price_series_df.set_index('Date')
+        price_series_df = pd.merge(dates_df, downloaded_prices, left_index = True, right_on = 'date', how = 'left')
+        price_series_df = price_series_df.set_index('date')
         price_series_df = price_series_df.ffill()
 
-        price_series_df = pd.melt(price_series_df.reset_index(), id_vars = ['Date'], value_vars = list(price_series_df.columns), var_name = 'yf_ticker', value_name= 'Price' )
+        price_series_df = pd.melt(price_series_df.reset_index(), id_vars = ['date'], value_vars = list(price_series_df.columns), var_name = 'yf_ticker', value_name= 'Price' )
         price_series_df = pd.merge(price_series_df, tickers_df, left_on = 'yf_ticker', right_on = 'yf_ticker', how = 'outer' )
 
-        price_series_df = price_series_df.set_index('Date')
+        price_series_df = price_series_df.set_index('date')
 
         logger.info("prices were downloaded successfully")
 
@@ -246,12 +248,12 @@ def create_tickers_df(tickers_dict, fx_dict):
 
     # create the df
     tickers_df = pd.DataFrame(data = tickers_dict).T.reset_index()
-    tickers_df = tickers_df.rename(columns = {0 : 'yf_ticker', 1 : 'crncy', 'index' : 'Symbol'})
+    tickers_df = tickers_df.rename(columns = {0 : 'yf_ticker', 1 : 'currency', 'index' : 'symbol'})
     tickers_df.insert(0, 'ticker_type', 'stocks')
 
     fx_df = pd.DataFrame(data = fx_dict.values(), index = fx_dict.keys()).reset_index()
-    fx_df.columns = ['Symbol', 'yf_ticker']
-    fx_df['crncy'] = ''
+    fx_df.columns = ['symbol', 'yf_ticker']
+    fx_df['currency'] = ''
     fx_df.insert(0, 'ticker_type', 'fx')
     
     tickers_df = pd.concat([tickers_df, fx_df], axis = 0)
@@ -266,8 +268,8 @@ def check_constants_exist(tickers_df, orders_df):
     '''
     checks that constants exist - if not, they need to be set up in settings.py
     '''
-    orders_set = set(orders_df['Symbol'].dropna())
-    constants_set = set(tickers_df['Symbol'])
+    orders_set = set(orders_df['symbol'].dropna())
+    constants_set = set(tickers_df['symbol'])
 
     unassigned_tickers = orders_set.difference(constants_set)
 
