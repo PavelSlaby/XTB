@@ -19,12 +19,9 @@ Project structure: https://github.com/pslaby/portfolio-analytics
 
 
 # Import standard packages
-import os
 import pandas as pd
 import logging
-
-os.getcwd()
-os.chdir(r"D:\Investing\XTB\Repos")
+from pathlib import Path
 
 # Import local modules
 from library import data_loader
@@ -33,6 +30,12 @@ from library import create_metrics_history
 from library import settings
 from library import reporting
 
+# setting current working directory
+try:
+    BASE_DIR = Path(__file__).resolve().parent
+except NameError:
+    BASE_DIR = Path.cwd()
+
 
 # Loading Constants
 xtb_input = settings.XTB_INPUT_FILE_PATH    # Folder paths
@@ -40,6 +43,8 @@ tickers_dict = settings.TICKERS_DICT        # Manual mappings for tickers and fx
 fx_dict = settings.FX_DICT                  # Manual mappings for tickers and fx
 history_start = settings.CALCS_START_DATE   # History timeframe
 history_end = settings.CALCS_END_DATE
+benchmark_ticker = settings.BENCHMARK_TICKER
+default_plot_ticker = settings.DEFAULT_PLOT_TICKER
 
 # Logging
 settings.setup_logging()
@@ -94,16 +99,30 @@ def create_metrics(outputs):
     
     # Creates daily_portfolio_metrics DF which has portfolio level data
     metrics_obj.create_daily_portfolio_metrics()
-    metrics_obj.establish_bmk(price_series_df, 'IUSA.DE')    
+    metrics_obj.establish_bmk(price_series_df, BENCHMARK_TICKER)
     metrics_obj.calc_prtf_nav()
     metrics_obj.calc_sharpe()
 
     return metrics_obj
 
 
+def run_reporting(portfolio, price_series_df):
+    reporting.overview_per_ticker(portfolio)
+    reporting.print_crnt_prtf_stats(portfolio, price_series_df)
+    reporting.simulate_bmk_rtn(BENCHMARK_TICKER, portfolio, price_series_df)
+    reporting.plot_ticker_mv(DEFAULT_PLOT_TICKER, portfolio)
+    reporting.graph_assets_mv(portfolio, one_graph=True)
+    reporting.graph_mv_stacked(portfolio)
+
+    logger.info("Printing fundamentals for portfolio assets..takes a bit...")
+
+    reporting.print_financials(settings.TICKERS_DICT, settings.DATAPOINTS)
+
 #%% Actual running of functions ---------------------------------------------------------------------------------
 
 # Load data
+
+logger.info("Loading data............")
 outputs = load_data(xtb_input)
 
 # Stores the outputs just in case they are needed later
@@ -114,6 +133,7 @@ price_series_df = outputs["price_series_df"]
 # Data Checks
 data_loader.check_constants_exist(tickers_df, orders_df)
 
+logger.info("Creating metrics...................")
 portfolio = create_metrics(outputs)
 # creates metrics object, it is an object that contains 2 DF - daily asset metrics and daily portfolio metrics
 # daily asset metrics - contains metrics per asset
@@ -129,23 +149,8 @@ daily_portfolio_metrics = portfolio.daily_portfolio_metrics
 
 
 #%% Reporting -----------------------------------------------------------------------------------------
-reporting.overview_per_ticker(portfolio)
-
-reporting.print_crnt_prtf_stats(portfolio, price_series_df)
-
-reporting.simulate_bmk_rtn('IUSA.DE', portfolio, price_series_df)
-
-reporting.plot_ticker_mv('ENR.DE', portfolio)
-
-reporting.graph_assets_mv(portfolio, one_graph = True)
-
-reporting.graph_mv_stacked(portfolio)
-
-
-print("wait.... will print some fundamentals on the portfolio assets")
-
-reporting.print_financials(settings.TICKERS_DICT , settings.DATAPOINTS)
-
+logger.info("Running reporting.............")
+run_reporting(portfolio, price_series_df)
 
 
 

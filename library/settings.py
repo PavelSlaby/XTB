@@ -15,6 +15,9 @@ import logging
 XTB_INPUT_FILE_PATH = r"D:\Investing\XTB\XTB_portfolio_output" #source of the xtb excel file
 PROJECT_DIRECTORY = r"D:/_Python/XTB_Python_project"
 
+# for reporting
+BENCHMARK_TICKER = "IUSA.DE"    # used as a benchmark in reporting
+DEFAULT_PLOT_TICKER = "ENR.DE"  # used to plot extra graphs
 
 # manual mappings for tickers and fx, xtb_ticker to yfinance ticker and currency
 TICKERS_DICT = {
