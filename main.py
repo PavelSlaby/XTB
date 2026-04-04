@@ -9,47 +9,49 @@ This script:
 - Prepares data for portfolio analysis, risk, and reporting modules
 
 Project structure: https://github.com/pslaby/portfolio-analytics
-
 '''
 
 
 '''
     TODO: sortino ratio
-
 '''
 
 
 
-# imports standard packages
+# import standard packages
 import os
 import pandas as pd
 import logging
 
-
 os.getcwd()
 os.chdir(r"D:\Investing\XTB\Repos")
 
-#imports local modules
-import library.data_loader as data_loader #imports all data
-import library.daily_position as daily_position #Creates daily position for each share
-import library.create_metrics_history  as create_metrics_history  # creates portfolio view
-import library.settings  as settings  # constants/paths
-import library.reporting as reporting
+# import local modules
+from library import data_loader
+from library import daily_position
+from library import create_metrics_history
+from library import settings
+from library import reporting
 
-import importlib
+# Folder paths
+xtb_input = settings.XTB_INPUT_FILEPATH
 
-importlib.reload(reporting)
+# Manual mappings for tickers and fx, xtb_ticker to yfinance ticker and currency
+tickers_dict = settings.TICKERS_DICT
+fx_dict = settings.FX_DICT
+
+# History timeframe
+history_start = settings.CALCS_START_DATE
+history_end = settings.CALCS_END_DATE
+
 
 settings.setup_logging()
 logger = logging.getLogger(__name__)
 
-
 #pandas params
-pd.set_option('display.max_columns', None) #to display all columns
-pd.set_option('display.width', 500)  #use the entire width to display the columns
+pd.set_option('display.max_columns', None) # to display all columns
+pd.set_option('display.width', 500)  # use the entire width to display the columns
 pd.set_option('display.max_rows', 1000)
-
-
 
 def load_data(source: str):
     # 1: Checks connections
@@ -101,21 +103,8 @@ def create_metrics(outputs):
 
     return metrics_obj
 
-
-
 #%% actual running of functions
 
-# Folder paths
-xtb_input = settings.XTB_INPUT_FILEPATH
-
-# manual mappings for tickers and fx, xtb_ticker to yfinance ticker and crncy
-tickers_dict = settings.TICKERS_DICT
-fx_dict = settings.FX_DICT
-
-
-# History timeframe
-history_start = settings.CALCS_START_DATE
-history_end = settings.CALCS_END_DATE
 
 # Prepares data
 outputs = load_data(xtb_input)
@@ -132,15 +121,14 @@ data_loader.check_constants_exist(tickers_df, orders_df)
 # creates metrics object, it is and object that contains 2 DF - daily asset metrics and daily portfolio metrics
 portfolio = create_metrics(outputs)
 
-# main data objects:
-
-#daily position
+#%% main data objects:
+# daily position
 daily_position = daily_position.create_position_df(orders_df, tickers_df, price_series_df, history_start) # this step is duplicated
 
-#pnl per each asset
+# pnl per each asset
 daily_asset_metrics = portfolio.daily_asset_metrics
 
-#daily portfolio metrics
+# daily portfolio metrics
 daily_portfolio_metrics = portfolio.daily_portfolio_metrics
 
 
@@ -162,7 +150,6 @@ print("wait.....")
 
 reporting.print_financials(settings.TICKERS_DICT , settings.DATAPOINTS)
 
-# ej
 
 
 

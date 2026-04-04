@@ -30,19 +30,21 @@ def create_position_df(orders_df, tickers_df, price_series_df, history_start, hi
     del positions_df['Time']
     del positions_df['Split']
    
+    # set the end of the timeframe for the calculations, today is the default value
     if history_end == None: history_end = datetime.today()
-    
-    xtb_symbols = tickers_df.loc[tickers_df['crncy'] != '',   'Symbol']
+
+    # filters only stock tickers, the rest is for currency pairs
+    xtb_symbols = tickers_df.loc[tickers_df['ticker_type'] == 'stocks',   'Symbol']
     
     dates_df = pd.date_range(history_start, history_end)
     dates_df = pd.MultiIndex.from_product([dates_df, xtb_symbols], names = ['Date', 'Symbol']).to_frame(index = False)
 
-    # Cost = Amount, should we rename to to "invested capital?"
+    # Cost = Amount, should we rename to "invested capital?"
     positions_df.loc[positions_df['Type'].isin(['Stock purchase', 'Stock sale']), 'cost'] = positions_df['Amount']
 
     positions_df = pd.merge(positions_df, tickers_df, left_on = 'Symbol', right_on = 'Symbol')
 
-    # filters only relevant transasctions -- # TODO: extend this to DIVIDENTs and fees
+    # filters only relevant transactions -- # TODO: extend this to DIVIDENTs and fees
     daily_positions_df = positions_df.loc[positions_df['Type'].isin(['Stock purchase', 'Stock sale']), ['Date', 'Symbol', 'direction', 'crncy', 'cost']] 
 
     # Sum up -- important if there are more orders for the same symbol in one day

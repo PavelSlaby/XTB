@@ -11,13 +11,12 @@ Created on Sat Sep 27 20:39:31 2025
 from datetime import datetime
 import logging 
 
-
 # Folder paths
 XTB_INPUT_FILEPATH = r"D:\Investing\XTB\XTB_portfolio_output" #source of the xtb excel file
 PROJECT_DIRECTORY = r"D:/_Python/XTB_Python_project"
 
 
-# manual mappings for tickers and fx, xtb_ticker to yfinance ticker and crncy
+# manual mappings for tickers and fx, xtb_ticker to yfinance ticker and currency
 TICKERS_DICT = {
                 'CRWD.US'  : ['CRWD', 'USD'] , 
                 'DTLE.UK'  : ['DTLE.L', 'EUR'],
@@ -33,7 +32,7 @@ TICKERS_DICT = {
                 'AMEM.DE'  : ['AEEM.PA', 'EUR'],
                 'QBTS.US'  : ['QBTS', 'USD'],
                 'CHPT.US'  : ['CHPT','USD'],
-                'OD7F.DE'  : ['OD7F.MU','EUR'], #there are several similat tickets
+                'OD7F.DE'  : ['OD7F.MU','EUR'], # there are several similar tickets
                 'RGTI.US'  : ['RGTI','USD'],
                 'IONQ.US'  : ['IONQ','USD'],
                 'RACE.IT'  : ['RACE.MI','EUR'],
@@ -71,8 +70,6 @@ DATAPOINTS = [    'sector',
 # History timeframe
 CALCS_START_DATE = '2023-01-01'
 CALCS_END_DATE = datetime.today()
-
-
 
 def setup_logging():
     logging.basicConfig(

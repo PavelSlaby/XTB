@@ -32,7 +32,7 @@ def check_yfinance_connection():
     '''
     try:
         x = yf.Ticker("AAPL").history(period = '1d')
-        if x is not None: logger.info("connection to Yahoo Finance is successfull") 
+        if x is not None: logger.info("connection to Yahoo Finance is successful")
                
     except Exception as e:
         logger.warning(f"Error: {e} \nCould not connect to Yahoo Finance")
@@ -247,13 +247,15 @@ def create_tickers_df(tickers_dict, fx_dict):
     # create the df
     tickers_df = pd.DataFrame(data = tickers_dict).T.reset_index()
     tickers_df = tickers_df.rename(columns = {0 : 'yf_ticker', 1 : 'crncy', 'index' : 'Symbol'})
-    
+    tickers_df.insert(0, 'ticker_type', 'stocks')
+
     fx_df = pd.DataFrame(data = fx_dict.values(), index = fx_dict.keys()).reset_index()
     fx_df.columns = ['Symbol', 'yf_ticker']
     fx_df['crncy'] = ''
+    fx_df.insert(0, 'ticker_type', 'fx')
     
     tickers_df = pd.concat([tickers_df, fx_df], axis = 0)
-    
+
     logger.info("Tickers/FX constants processed successfully")
     
     return tickers_df

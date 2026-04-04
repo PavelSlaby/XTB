@@ -3,11 +3,7 @@ create_metrics_history.py
 
 This module contains functions to create the history of different metrics from pnl to var
 
-functions:
 
-todo: this should definitely be an object on which I just apply functions that append the object by having more data
-
-dependencies:
 
 '''
 
