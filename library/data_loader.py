@@ -129,7 +129,7 @@ def read_orders_df(orders_df):
                 trim_xtb_xls()       
     '''
     try:
-        orders_df = prtf_file_loaded
+        #orders_df = prtf_file_loaded
 
         orders_df = trim_xtb_xls(orders_df)
 
@@ -211,18 +211,19 @@ def download_tickers_prices(tickers_df, history_start, history_end):
         tickers_to_download = list(tickers_df['yf_ticker'].unique())
 
         #removes EUREUR just because it temporarily does not work
-        tickers_to_download.pop(len(tickers_to_download) - 1)
-
+        tickers_to_download.remove('EUREUR=X')
 
         dates_df = pd.DataFrame(index = pd.date_range(history_start, history_end))
 
         downloaded_prices = yf.download(tickers_to_download, start = history_start, end = history_end, auto_adjust=False)['Adj Close']
+        downloaded_prices.index.name =  'date'
 
         price_series_df = pd.merge(dates_df, downloaded_prices, left_index = True, right_on = 'date', how = 'left')
         price_series_df = price_series_df.set_index('date')
         price_series_df = price_series_df.ffill()
 
-        price_series_df = pd.melt(price_series_df.reset_index(), id_vars = ['date'], value_vars = list(price_series_df.columns), var_name = 'yf_ticker', value_name= 'Price' )
+        price_series_df = pd.melt(price_series_df.reset_index(), id_vars = ['date'], value_vars = list(price_series_df.columns), var_name = 'yf_ticker', value_name= 'price' )
+
         price_series_df = pd.merge(price_series_df, tickers_df, left_on = 'yf_ticker', right_on = 'yf_ticker', how = 'outer' )
 
         price_series_df = price_series_df.set_index('date')
