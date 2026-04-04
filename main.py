@@ -18,7 +18,7 @@ Project structure: https://github.com/pslaby/portfolio-analytics
 
 
 
-# import standard packages
+# Import standard packages
 import os
 import pandas as pd
 import logging
@@ -26,29 +26,26 @@ import logging
 os.getcwd()
 os.chdir(r"D:\Investing\XTB\Repos")
 
-# import local modules
+# Import local modules
 from library import data_loader
 from library import daily_position
 from library import create_metrics_history
 from library import settings
 from library import reporting
 
-# Folder paths
-xtb_input = settings.XTB_INPUT_FILEPATH
 
-# Manual mappings for tickers and fx, xtb_ticker to yfinance ticker and currency
-tickers_dict = settings.TICKERS_DICT
-fx_dict = settings.FX_DICT
-
-# History timeframe
-history_start = settings.CALCS_START_DATE
+# Loading Constants
+xtb_input = settings.XTB_INPUT_FILE_PATH    # Folder paths
+tickers_dict = settings.TICKERS_DICT        # Manual mappings for tickers and fx
+fx_dict = settings.FX_DICT                  # Manual mappings for tickers and fx
+history_start = settings.CALCS_START_DATE   # History timeframe
 history_end = settings.CALCS_END_DATE
 
-
+# Logging
 settings.setup_logging()
 logger = logging.getLogger(__name__)
 
-#pandas params
+# Pandas parameters
 pd.set_option('display.max_columns', None) # to display all columns
 pd.set_option('display.width', 500)  # use the entire width to display the columns
 pd.set_option('display.max_rows', 1000)
@@ -103,28 +100,27 @@ def create_metrics(outputs):
 
     return metrics_obj
 
-#%% actual running of functions
 
+#%% Actual running of functions ---------------------------------------------------------------------------------
 
-# Prepares data
+# Load data
 outputs = load_data(xtb_input)
 
-
-# stores the outputs just in case they are needed later
+# Stores the outputs just in case they are needed later
 orders_df       = outputs["orders_df"]
 tickers_df      = outputs["tickers_df"]
 price_series_df = outputs["price_series_df"]
 
+# Data Checks
 data_loader.check_constants_exist(tickers_df, orders_df)
 
-
-# creates metrics object, it is and object that contains 2 DF - daily asset metrics and daily portfolio metrics
 portfolio = create_metrics(outputs)
+# creates metrics object, it is an object that contains 2 DF - daily asset metrics and daily portfolio metrics
+# daily asset metrics - contains metrics per asset
+# daily portfolio metrics - contains metrics per entire portfolio
 
-#%% main data objects:
-# daily position
-daily_position = daily_position.create_position_df(orders_df, tickers_df, price_series_df, history_start) # this step is duplicated
 
+#%% main data objects: ------------------------------------------------------------------------------
 # pnl per each asset
 daily_asset_metrics = portfolio.daily_asset_metrics
 
@@ -132,13 +128,12 @@ daily_asset_metrics = portfolio.daily_asset_metrics
 daily_portfolio_metrics = portfolio.daily_portfolio_metrics
 
 
-#%% Reporting
+#%% Reporting -----------------------------------------------------------------------------------------
 reporting.overview_per_ticker(portfolio)
 
 reporting.print_crnt_prtf_stats(portfolio, price_series_df)
 
 reporting.simulate_bmk_rtn('IUSA.DE', portfolio, price_series_df)
-
 
 reporting.plot_ticker_mv('ENR.DE', portfolio)
 
@@ -146,7 +141,8 @@ reporting.graph_assets_mv(portfolio, one_graph = True)
 
 reporting.graph_mv_stacked(portfolio)
 
-print("wait.....")
+
+print("wait.... will print some fundamentals on the portfolio assets")
 
 reporting.print_financials(settings.TICKERS_DICT , settings.DATAPOINTS)
 

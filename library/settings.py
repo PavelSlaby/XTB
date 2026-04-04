@@ -12,7 +12,7 @@ from datetime import datetime
 import logging 
 
 # Folder paths
-XTB_INPUT_FILEPATH = r"D:\Investing\XTB\XTB_portfolio_output" #source of the xtb excel file
+XTB_INPUT_FILE_PATH = r"D:\Investing\XTB\XTB_portfolio_output" #source of the xtb excel file
 PROJECT_DIRECTORY = r"D:/_Python/XTB_Python_project"
 
 

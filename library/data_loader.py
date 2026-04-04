@@ -22,7 +22,7 @@ import library.settings  as settings
 
 logger = logging.getLogger(__name__)
 
-source = settings.XTB_INPUT_FILEPATH
+source = settings.XTB_INPUT_FILE_PATH
 
 
 #--- Checks ---

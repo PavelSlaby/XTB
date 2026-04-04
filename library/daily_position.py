@@ -38,23 +38,23 @@ def create_position_df(orders_df, tickers_df, price_series_df, history_start, hi
 
     # Modify the orders DF
     orders_modified = orders_df.copy()
-    del orders_modified['Time']
-    del orders_modified['Split']
+    del orders_modified['time']
+    del orders_modified['split']
 
     orders_modified = pd.merge(orders_modified, tickers_df, left_on = 'symbol', right_on = 'symbol')
 
     # filters only transactions for constructing the position
-    daily_positions_df = orders_modified.loc[orders_modified['Type'].isin(['Stock purchase', 'Stock sale']), ['date', 'symbol', 'direction', 'currency', 'Amount']]
+    daily_positions_df = orders_modified.loc[orders_modified['type'].isin(['Stock purchase', 'Stock sale']), ['date', 'symbol', 'direction', 'currency', 'amount']]
 
     # Sum up -- important if there are more orders for the same symbol in one day, it aggregates them per day/symbol
-    daily_positions_df =  daily_positions_df.groupby(['symbol', 'date', 'currency'], as_index = False).agg({'direction': 'sum', 'Amount': 'sum'})
+    daily_positions_df =  daily_positions_df.groupby(['symbol', 'date', 'currency'], as_index = False).agg({'direction': 'sum', 'amount': 'sum'})
 
     daily_positions_df['date']  = daily_positions_df['date'].astype('datetime64[ns]')
-    daily_positions_df['amount'] = daily_positions_df['Amount'].astype('float64')
+    daily_positions_df['amount'] = daily_positions_df['amount'].astype('float64')
 
 
     daily_positions_df['outstanding_position'] = daily_positions_df.groupby(['symbol'])['direction'].cumsum()
-    daily_positions_df['cost_cumsum'] = daily_positions_df.groupby(['symbol'])['cost'].cumsum()
+    daily_positions_df['cost_cumsum'] = daily_positions_df.groupby(['symbol'])['amount'].cumsum()
 
 
     # Forward fill for each date
@@ -70,13 +70,16 @@ def create_position_df(orders_df, tickers_df, price_series_df, history_start, hi
 
 
     #get the daily prices and fx
-    daily_positions_df = pd.merge(daily_positions_df, price_series_df[['symbol', 'Price']].reset_index(), left_on = ['date', 'symbol'], right_on = ['date', 'symbol'] , how = 'left')
-    daily_positions_df = pd.merge(daily_positions_df, price_series_df[['symbol', 'Price']].reset_index(), left_on = ['date', 'currency'], right_on = ['date', 'symbol'] , how = 'left')
+    daily_positions_df = pd.merge(daily_positions_df, price_series_df[['symbol', 'price']].reset_index(), left_on = ['date', 'symbol'], right_on = ['date', 'symbol'] , how = 'left')
+    daily_positions_df = pd.merge(daily_positions_df, price_series_df[['symbol', 'price']].reset_index(), left_on = ['date', 'currency'], right_on = ['date', 'symbol'] , how = 'left')
     del daily_positions_df['symbol_y']
-    daily_positions_df.rename(columns = {'symbol_x' : 'symbol', 'Price_x': 'Price', 'Price_y': 'fx'}, inplace = True)
+    daily_positions_df.rename(columns = {'symbol_x' : 'symbol', 'price_x': 'price', 'price_y': 'fx'}, inplace = True)
     daily_positions_df.loc[daily_positions_df['currency'] == 'EUR', 'fx'] = 1
-    daily_positions_df.loc[daily_positions_df['cost'].isna() == True, 'cost'] = 0
+    daily_positions_df.loc[daily_positions_df['amount'].isna() == True, 'amount'] = 0
     
     logger.info("daily position table updated")
 
     return daily_positions_df
+
+
+### problem is here, this funcitn returns amount = nan

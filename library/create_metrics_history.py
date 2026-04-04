@@ -22,13 +22,13 @@ class PnlItems():
     def prepare(self):
         #filter relevant types
         filtered = self.orders_df.loc[
-            self.orders_df['Type'].isin(['DIVIDENT', 'Withholding tax', 'SEC fee']) , ['Date', 'Symbol', 'Type', 'Comment', 'Amount', ] ].copy()
+            self.orders_df['type'].isin(['DIVIDENT', 'Withholding tax', 'SEC fee']) , ['date', 'symbol', 'type', 'comment', 'amount', ] ].copy()
         
         # Grouped per date and symbol
-        filtered = filtered.groupby(['Date', 'Symbol', 'Type', 'Comment'])['Amount'].sum().reset_index()
+        filtered = filtered.groupby(['date', 'symbol', 'type', 'comment'])['amount'].sum().reset_index()
         
-        self.pnl_items_df_agg = filtered.groupby(['Date', 'Symbol'])['Amount'].sum().reset_index()
-        self.pnl_items_df_agg['Date'] = pd.to_datetime(self.pnl_items_df_agg['Date'])
+        self.pnl_items_df_agg = filtered.groupby(['date', 'symbol'])['amount'].sum().reset_index()
+        self.pnl_items_df_agg['date'] = pd.to_datetime(self.pnl_items_df_agg['date'])
 
       
         
@@ -42,18 +42,20 @@ class DailyMetrics():
     def calculate_mv(self):
         #MV
         self.daily_asset_metrics['MV'] = (
-                                        self.daily_asset_metrics['Price'] * 
+                                        self.daily_asset_metrics['price'] * 
                                         self.daily_asset_metrics['outstanding_position'] * 
                                         self.daily_asset_metrics['fx']
                                         )
         
     def include_other_pnl_items(self, other_pnl_items):
-        daily_asset_metrics = pd.merge(self.daily_asset_metrics, other_pnl_items, left_on = ['Date', 'Symbol'], right_on = ['Date', 'Symbol'], how = 'left' )
+        daily_asset_metrics = pd.merge(self.daily_asset_metrics, other_pnl_items, left_on = ['date', 'symbol'], right_on = ['date', 'symbol'], how = 'left' )
         # are the following lines neccessary?
         daily_asset_metrics = daily_asset_metrics.loc[
-            (daily_asset_metrics['outstanding_position'] != 0) | (daily_asset_metrics['direction'] != 0)]    
-        daily_asset_metrics['Amount'] = daily_asset_metrics['Amount'].fillna(0)
-        daily_asset_metrics =  daily_asset_metrics.rename(columns = {'Amount': 'other_pnl'})
+            (daily_asset_metrics['outstanding_position'] != 0) | (daily_asset_metrics['direction'] != 0)]
+        daily_asset_metrics = daily_asset_metrics.rename(columns = { 'amount_x': 'amount'})
+        daily_asset_metrics['amount'] = daily_asset_metrics['amount'].fillna(0)
+        daily_asset_metrics =  daily_asset_metrics.rename(columns = {'amount_y': 'other_pnl'})
+        daily_asset_metrics['other_pnl'] = daily_asset_metrics['amount'].fillna(0)
         self.daily_asset_metrics = daily_asset_metrics
 
     
@@ -63,14 +65,14 @@ class DailyMetrics():
         # LTD
         daily_asset_metrics['pnl_ltd'] = daily_asset_metrics['MV'] + daily_asset_metrics['cost_cumsum']  
         # DTD
-        daily_asset_metrics = daily_asset_metrics.sort_values(['Symbol', 'Date'])
-        daily_asset_metrics['pnl_dtd'] = daily_asset_metrics.groupby('Symbol')['pnl_ltd'].diff()
+        daily_asset_metrics = daily_asset_metrics.sort_values(['symbol', 'date'])
+        daily_asset_metrics['pnl_dtd'] = daily_asset_metrics.groupby('symbol')['pnl_ltd'].diff()
         daily_asset_metrics.loc[daily_asset_metrics['pnl_dtd'].isna(), 'pnl_dtd' ] = daily_asset_metrics['pnl_ltd']
         # DTD Tot
         daily_asset_metrics['pnl_tot_dtd'] = daily_asset_metrics['pnl_dtd'] + daily_asset_metrics['other_pnl']
         # LTD Tot
-        daily_asset_metrics['pnl_tot_ltd'] = daily_asset_metrics.groupby(['Symbol'])['pnl_tot_dtd'].cumsum()     
-        # maybe not neccessary: daily_asset_metrics['pnl_ltd'] = daily_asset_metrics.groupby(['Symbol'])['pnl_dtd'].cumsum()
+        daily_asset_metrics['pnl_tot_ltd'] = daily_asset_metrics.groupby(['symbol'])['pnl_tot_dtd'].cumsum()     
+        # maybe not neccessary: daily_asset_metrics['pnl_ltd'] = daily_asset_metrics.groupby(['symbol'])['pnl_dtd'].cumsum()
         # LTD rel
         daily_asset_metrics['pnl_rel_ltd'] = daily_asset_metrics['pnl_ltd'] / daily_asset_metrics['cost_cumsum'] *-1
         # LTD Tot rel
@@ -85,14 +87,14 @@ class DailyMetrics():
     def create_daily_portfolio_metrics(self):
          daily_asset_metrics = self.daily_asset_metrics
          #pivots the daily_asset_metrics so that we can calculate statistics on the total
-         pivoted = daily_asset_metrics[['Date',  'Symbol', 'pnl_tot_ltd', 'pnl_ltd', 'MV', 'cost_cumsum', 'cost',  'pnl_tot_dtd', 'pnl_rel_dtd']].pivot(index='Date', columns='Symbol', values=[ 'pnl_tot_ltd', 'pnl_rel_dtd', 'MV', 'cost', 'cost_cumsum', 'pnl_ltd', 'pnl_tot_dtd'])
+         pivoted = daily_asset_metrics[['date', 'symbol', 'pnl_tot_ltd', 'pnl_ltd', 'MV', 'cost_cumsum', 'amount',  'pnl_tot_dtd', 'pnl_rel_dtd']].pivot(index='date', columns='symbol', values=[ 'pnl_tot_ltd', 'pnl_rel_dtd', 'MV', 'amount', 'cost_cumsum', 'pnl_ltd', 'pnl_tot_dtd'])
          pivoted['prtf_mv']            = pivoted['MV'].sum(axis = 1)
          pivoted['prtf_cost_sum']      = pivoted['cost_cumsum'].sum(axis = 1) * -1
          pivoted['prtf_pnl_tot_ltd']   = pivoted['pnl_tot_ltd'].sum(axis = 1)
          pivoted['prtf_pnl_ltd']       = pivoted['pnl_ltd'].sum(axis = 1)
          pivoted['prtf_tot_rtn_ltd']   = pivoted['prtf_pnl_tot_ltd'] / pivoted['prtf_cost_sum'] 
          pivoted['prtf_rtn_ltd']       = pivoted['prtf_pnl_ltd'] / pivoted['prtf_cost_sum'] 
-         pivoted['prtf_cost_dtd']      = pivoted['cost'].sum(axis = 1)  * -1
+         pivoted['prtf_cost_dtd']      = pivoted['amount'].sum(axis = 1)  * -1
          self.daily_portfolio_metrics = pivoted
          
          logger.info('daily_portfolio_metrics DF created')
@@ -100,45 +102,45 @@ class DailyMetrics():
          return self.daily_portfolio_metrics
                 
     def establish_bmk(self, price_series_df: pd.DataFrame, symbol: str):
-        bmk_price_series = price_series_df.loc[price_series_df['Symbol']== symbol, 'Price'].copy()
+        bmk_price_series = price_series_df.loc[price_series_df['symbol']== symbol, 'price'].copy()
         bmk_price_series = pd.DataFrame(bmk_price_series)
-        bmk_price_series.columns = pd.MultiIndex.from_tuples([('Price', 'bmk')])
-        merged = pd.merge(self.daily_portfolio_metrics , bmk_price_series, how = 'left', left_index = True, right_on = 'Date' )
+        bmk_price_series.columns = pd.MultiIndex.from_tuples([('price', 'bmk')])
+        merged = pd.merge(self.daily_portfolio_metrics , bmk_price_series, how = 'left', left_index = True, right_on = 'date' )
         #sets the price index to 1 for better comparison
-        merged['Price'] = merged['Price'] / merged.iloc[0, merged.columns.get_loc('Price')].iloc[0]
+        merged['price'] = merged['price'] / merged.iloc[0, merged.columns.get_loc('price')].iloc[0]
         self.daily_portfolio_metrics = merged
         
     def calc_prtf_nav(self):
-        # calculates the NAV of the portfolio
+        # calculates the nav of the portfolio
         total_position = self.daily_portfolio_metrics
 
-        total_position['Total_Units'] = 1.0
-        total_position['NAV'] = 1.0
+        total_position['total_units'] = 1.0
+        total_position['nav'] = 1.0
 
-        for i in range(len(total_position['Total_Units'])):
+        for i in range(len(total_position['total_units'])):
             
             if i == 0: ## probably faster if I get rif of the IF and just do it beforehad, so that the if conditiona does not hvae to eb evaluated each time
-                total_position.iloc[i, total_position.columns.get_loc('Total_Units')] =  total_position.iloc[i, total_position.columns.get_loc('prtf_cost_dtd')]
-                total_position.iloc[i, total_position.columns.get_loc('NAV')] =  (
+                total_position.iloc[i, total_position.columns.get_loc('total_units')] =  total_position.iloc[i, total_position.columns.get_loc('prtf_cost_dtd')]
+                total_position.iloc[i, total_position.columns.get_loc('nav')] =  (
                                                 total_position.iloc[i, total_position.columns.get_loc('prtf_mv')].iloc[0] 
-                                              / total_position.iloc[i, total_position.columns.get_loc('Total_Units')].iloc[0]
+                                              / total_position.iloc[i, total_position.columns.get_loc('total_units')].iloc[0]
                                                                                   )
 
             else:
-                total_position.iloc[i, total_position.columns.get_loc('Total_Units')] = ( 
-                                                                                 total_position.iloc[i - 1, total_position.columns.get_loc('Total_Units')].iloc[0]
+                total_position.iloc[i, total_position.columns.get_loc('total_units')] = ( 
+                                                                                 total_position.iloc[i - 1, total_position.columns.get_loc('total_units')].iloc[0]
                                                                                  + 
                                                                                  total_position.iloc[i, total_position.columns.get_loc('prtf_cost_dtd')].iloc[0] 
                                                                                                                                                                 
-                                                                                 /total_position.iloc[i - 1, total_position.columns.get_loc('NAV')].iloc[0]
+                                                                                 /total_position.iloc[i - 1, total_position.columns.get_loc('nav')].iloc[0]
                                                                                          )
               
-                total_position.iloc[i, total_position.columns.get_loc('NAV')] = (
+                total_position.iloc[i, total_position.columns.get_loc('nav')] = (
                                                                                    total_position.iloc[i, total_position.columns.get_loc('prtf_mv')].iloc[0] 
-                                                                                 / total_position.iloc[i, total_position.columns.get_loc('Total_Units')].iloc[0]
+                                                                                 / total_position.iloc[i, total_position.columns.get_loc('total_units')].iloc[0]
                                                                                 )
                                                                                                 
-                total_position['unit_rtn_tot_dtd'] = total_position['NAV'] / total_position['NAV'].shift(1) -1
+                total_position['unit_rtn_tot_dtd'] = total_position['nav'] / total_position['nav'].shift(1) -1
         
         self.daily_portfolio_metrics = total_position
        
@@ -189,9 +191,9 @@ class DailyMetrics():
         total_position = self.daily_portfolio_metrics
         max_drawdown = 1
         for i in total_position.index[1:]:
-            crnt_value = total_position.loc[total_position.index == i, 'NAV'].iloc[0]
-            prev_peak = total_position.loc[total_position.index < i, 'NAV'].max()
-            prev_peak_date = total_position.loc[total_position.index < i, 'NAV'].idxmax()
+            crnt_value = total_position.loc[total_position.index == i, 'nav'].iloc[0]
+            prev_peak = total_position.loc[total_position.index < i, 'nav'].max()
+            prev_peak_date = total_position.loc[total_position.index < i, 'nav'].idxmax()
             
             drawdown = crnt_value / prev_peak 
             drawdown_abs = total_position.loc[total_position.index == i, 'prtf_mv'].iloc[0] - total_position.loc[total_position.index == prev_peak_date, 'prtf_mv'].iloc[0]
@@ -210,32 +212,32 @@ class DailyMetrics():
 
 def calc_hvar(daily_asset_metrics, price_series_df, confidence_lvl = 95):
     #calculates VaR for the most recent date
-    df = daily_asset_metrics.loc[:, ['Date', 'Symbol', 'outstanding_position', 'MV'] ]
+    df = daily_asset_metrics.loc[:, ['date', 'symbol', 'outstanding_position', 'MV'] ]
     #var date
-    var_date = df.iloc[-1]['Date']
+    var_date = df.iloc[-1]['date']
     
     #curernt market value
-    crnt_mv =  df.loc[df['Date'] == var_date, 'MV'].sum()          
+    crnt_mv =  df.loc[df['date'] == var_date, 'MV'].sum()          
 
     #current positions
-    df = df.loc[df['Date'] == var_date, ['Symbol', 'MV', 'outstanding_position']]
+    df = df.loc[df['date'] == var_date, ['symbol', 'MV', 'outstanding_position']]
 
-    var = price_series_df.loc[price_series_df['Symbol'].isin(df['Symbol'].tolist()), ['Price', 'Symbol', 'crncy']].reset_index()
-    var = pd.merge(var, df[['Symbol',  'outstanding_position']], left_on = 'Symbol', right_on = 'Symbol', how = 'left' )
-    var = pd.merge(var, price_series_df[['Symbol', 'Price']].reset_index(), left_on = ['Date', 'crncy'], right_on = ['Date', 'Symbol'] , how = 'left')
-    del var['Symbol_y']
-    var.rename(columns = {'Symbol_x' : 'Symbol', 'Price_x': 'Price', 'Price_y': 'fx'}, inplace = True)
+    var = price_series_df.loc[price_series_df['symbol'].isin(df['symbol'].tolist()), ['price', 'symbol', 'currency']].reset_index()
+    var = pd.merge(var, df[['symbol',  'outstanding_position']], left_on = 'symbol', right_on = 'symbol', how = 'left' )
+    var = pd.merge(var, price_series_df[['symbol', 'price']].reset_index(), left_on = ['date', 'currency'], right_on = ['date', 'symbol'] , how = 'left')
+    del var['symbol_y']
+    var.rename(columns = {'symbol_x' : 'symbol', 'price_x': 'price', 'price_y': 'fx'}, inplace = True)
     var.loc[var['fx'].isna(), 'fx'] = 1
     
     # Calculate MV of the portfolio for the past dates, assuming I would have held the current amount of shares.
-    var['prtf_mv'] =  var['Price'] * var['fx'] * var['outstanding_position'] 
+    var['prtf_mv'] =  var['price'] * var['fx'] * var['outstanding_position'] 
 
     # drop records when prices are not available, such as 1.1.YY
     var = var.dropna()
 
     # produce dailly MV and the returns...
     returns = pd.DataFrame()
-    returns['prtf_mv'] =  var.groupby('Date').agg({'prtf_mv' : 'sum'})
+    returns['prtf_mv'] =  var.groupby('date').agg({'prtf_mv' : 'sum'})
     returns['rtn'] = returns['prtf_mv'] / returns['prtf_mv'].shift(1) - 1
 
     var_rel = np.percentile(returns['rtn'][1:], 100 - confidence_lvl) #first value is nan, thats why the slice
