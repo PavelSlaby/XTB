@@ -35,7 +35,7 @@ TICKERS_DICT = {
                 'AMEM.DE'  : ['AEEM.PA', 'EUR'],
                 'QBTS.US'  : ['QBTS', 'USD'],
                 'CHPT.US'  : ['CHPT','USD'],
-                'OD7F.DE'  : ['OD7F.MU','EUR'], # there are several similar tickets
+            #    'OD7F.DE'  : ['OD7F.MU','EUR'], # there are several similar tickets
                 'RGTI.US'  : ['RGTI','USD'],
                 'IONQ.US'  : ['IONQ','USD'],
                 'RACE.IT'  : ['RACE.MI','EUR'],

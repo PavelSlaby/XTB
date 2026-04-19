@@ -13,7 +13,17 @@ Project structure: https://github.com/pslaby/portfolio-analytics
 
 
 '''
-    TODO: sortino ratio
+    TODO: 
+    
+    - I finished with reviewing the establish_bmk function
+    - check the metrics pnl columns, there are some -inf also visible in the final output....
+    
+        - sortino ratio
+        - investigate other trade types in the orders from XTB
+        - double check since when the dataloader loads the market prices - what timeframe I need for VaR, and if it does not download unnecessarily too long history
+        - make sure all different transaction types are loaded, it seems some could not be - correction etc...
+    
+    check in data loader - stock splits: 'OD7F.MU'
 '''
 
 
@@ -22,6 +32,7 @@ Project structure: https://github.com/pslaby/portfolio-analytics
 import pandas as pd
 import logging
 from pathlib import Path
+from datetime import datetime
 
 # Import local modules
 from library import data_loader
@@ -94,12 +105,12 @@ def create_metrics(outputs):
     # Creates new object from the daily position DF. New object has a daily_asset_metrics DF which looks at each asset individually
     metrics_obj = create_metrics_history.DailyMetrics(daily_positions_df)
     metrics_obj.calculate_mv()
-    metrics_obj.include_other_pnl_items(pnl_items_obj.pnl_items_df_agg)
+    metrics_obj.include_other_pnl_items(pnl_items_obj.pnl_items_other_sum)
     metrics_obj.calc_pnl()
     
     # Creates daily_portfolio_metrics DF which has portfolio level data
     metrics_obj.create_daily_portfolio_metrics()
-    metrics_obj.establish_bmk(price_series_df, BENCHMARK_TICKER)
+    metrics_obj.establish_bmk(price_series_df, benchmark_ticker)
     metrics_obj.calc_prtf_nav()
     metrics_obj.calc_sharpe()
 
@@ -109,14 +120,17 @@ def create_metrics(outputs):
 def run_reporting(portfolio, price_series_df):
     reporting.overview_per_ticker(portfolio)
     reporting.print_crnt_prtf_stats(portfolio, price_series_df)
-    reporting.simulate_bmk_rtn(BENCHMARK_TICKER, portfolio, price_series_df)
-    reporting.plot_ticker_mv(DEFAULT_PLOT_TICKER, portfolio)
+    reporting.simulate_bmk_rtn(benchmark_ticker, portfolio, price_series_df)
+    reporting.plot_ticker_mv(default_plot_ticker, portfolio)
     reporting.graph_assets_mv(portfolio, one_graph=True)
     reporting.graph_mv_stacked(portfolio)
 
     logger.info("Printing fundamentals for portfolio assets..takes a bit...")
 
-    reporting.print_financials(settings.TICKERS_DICT, settings.DATAPOINTS)
+    keys = portfolio.daily_asset_metrics.loc[portfolio.daily_asset_metrics['date'] == datetime.today().strftime('%Y-%m-%d'), 'symbol']
+    filtered = {k: settings.TICKERS_DICT[k] for k in keys if k in settings.TICKERS_DICT}
+
+    reporting.print_financials(filtered, settings.DATAPOINTS)
 
 #%% Actual running of functions ---------------------------------------------------------------------------------
 
@@ -129,6 +143,7 @@ outputs = load_data(xtb_input)
 orders_df       = outputs["orders_df"]
 tickers_df      = outputs["tickers_df"]
 price_series_df = outputs["price_series_df"]
+
 
 # Data Checks
 data_loader.check_constants_exist(tickers_df, orders_df)

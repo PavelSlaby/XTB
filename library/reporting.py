@@ -40,6 +40,7 @@ def print_crnt_prtf_stats(portfolio, price_series_df):
     invested_own_funds = daily_portfolio_metrics['prtf_cost_sum'].iloc[-1]
     prtf_tot_rtn_1y = daily_portfolio_metrics['1Y_rtn'].iloc[-1] * 100
     prtf_sharpe_1y = daily_portfolio_metrics['1Y_sharpe'].iloc[-1]
+    prtf_sharpe_3y = daily_portfolio_metrics['3Y_sharpe'].iloc[-1]
 
     print('\n PnL:')
     print(f"Total Portfolio Return LTD is: {prtf_tot_rtn_ltd:.2f}%")
@@ -53,6 +54,7 @@ def print_crnt_prtf_stats(portfolio, price_series_df):
 
     print('\n Risk:')
     print(f"Sharpe 1Y is: {prtf_sharpe_1y:.2f}")
+    print(f"Sharpe 3Y is: {prtf_sharpe_3y:.2f}")
 
     portfolio.get_biggest_daily_loss()
     portfolio.get_biggest_daily_gain()
@@ -71,11 +73,11 @@ def overview_per_ticker(portfolio):
                                                             'pnl_dtd': 'last',
                                                             'outstanding_position': 'last',
                                                             'price': 'last',
-                                                            'MV': 'last',
+                                                            'mv': 'last',
                                                             'cost_cumsum': 'last'
                                                             })
 
-    aggregated_stats['MV_%'] = aggregated_stats['MV'] / sum(aggregated_stats['MV']) * 100
+    aggregated_stats['MV_%'] = aggregated_stats['mv'] / sum(aggregated_stats['mv']) * 100
 
     aggregated_stats = aggregated_stats.rename(columns = {
                                         'pnl_tot_ltd' : 'PL_Tot_LTD',
@@ -91,7 +93,7 @@ def overview_per_ticker(portfolio):
 
     aggregated_stats['PL_Tot_LTD']      = aggregated_stats['PL_Tot_LTD'].apply(format_accounting)
     aggregated_stats['PL_DTD']          = aggregated_stats['PL_DTD'].apply(format_accounting)
-    aggregated_stats['MV']              = aggregated_stats['MV'].apply(format_accounting)
+    aggregated_stats['mv']              = aggregated_stats['mv'].apply(format_accounting)
     aggregated_stats['Invested_Amount'] = aggregated_stats['Invested_Amount'].apply(format_accounting)
     aggregated_stats['PL_Tot_LTD_%']    = aggregated_stats['PL_Tot_LTD_%'].apply(format_percent)
     aggregated_stats['price']           = aggregated_stats['price'].apply(format_percent)
@@ -115,8 +117,8 @@ def simulate_bmk_rtn(benchmark_symbol, portfolio, price_series_df):
     invested_amount_price['direction'] = invested_amount_price['amount'] * -1 / invested_amount_price['price']
     invested_amount_price['cost_cumsum'] = invested_amount_price['amount'].cumsum() * -1
     invested_amount_price['direction_cumsum'] = invested_amount_price['direction'].cumsum()
-    invested_amount_price['MV'] = invested_amount_price['direction_cumsum'] * invested_amount_price['price']
-    invested_amount_price['Total_Rel_Rtn'] = invested_amount_price['MV'] / invested_amount_price['cost_cumsum'] - 1
+    invested_amount_price['mv'] = invested_amount_price['direction_cumsum'] * invested_amount_price['price']
+    invested_amount_price['Total_Rel_Rtn'] = invested_amount_price['mv'] / invested_amount_price['cost_cumsum'] - 1
 
     # graph
     x_axis = daily_portfolio_metrics.index
@@ -124,12 +126,12 @@ def simulate_bmk_rtn(benchmark_symbol, portfolio, price_series_df):
     y_axis2 = daily_portfolio_metrics['prtf_mv']
     y_axis3 = daily_portfolio_metrics['prtf_cost_sum']
     y_axis4 = daily_portfolio_metrics['prtf_tot_rtn_ltd']
-    y_axis5 = invested_amount_price['MV']
+    y_axis5 = invested_amount_price['mv']
     y_axis6 = invested_amount_price['Total_Rel_Rtn']
 
     fig, ax1 = plt.subplots()
     ax1.plot(x_axis, y_axis1, label='PnL')
-    ax1.plot(x_axis, y_axis2, label='MV')
+    ax1.plot(x_axis, y_axis2, label='mv')
     ax1.plot(x_axis, y_axis3, label='Invested Capital')
     ax1.plot(x_axis, y_axis5, label=benchmark_symbol)
 
@@ -161,7 +163,7 @@ def simulate_bmk_rtn(benchmark_symbol, portfolio, price_series_df):
 
 
 def plot_ticker_mv(xtb_symbol, portfolio):
-    portfolio.daily_asset_metrics.loc[portfolio.daily_asset_metrics['symbol'] == xtb_symbol, ['symbol', 'MV'] ].plot()
+    portfolio.daily_asset_metrics.loc[portfolio.daily_asset_metrics['symbol'] == xtb_symbol, ['symbol', 'mv'] ].plot()
     plt.show()
 
 
@@ -178,7 +180,7 @@ def graph_assets_mv(portfolio, one_graph = True):
         # All symbols in one graph
         for i in daily_asset_metrics['symbol'].unique():
             x_axis = daily_asset_metrics.loc[daily_asset_metrics['symbol'] == i, 'date']
-            y_axis = daily_asset_metrics.loc[daily_asset_metrics['symbol'] == i, 'MV']
+            y_axis = daily_asset_metrics.loc[daily_asset_metrics['symbol'] == i, 'mv']
             plt.plot(x_axis, y_axis, label=i)
 
         plt.title('MV Growth')
@@ -189,7 +191,7 @@ def graph_assets_mv(portfolio, one_graph = True):
         # Separate graph per symbol
         for i in daily_asset_metrics['symbol'].unique():
             x_axis = daily_asset_metrics.loc[daily_asset_metrics['symbol'] == i, 'date']
-            y_axis = daily_asset_metrics.loc[daily_asset_metrics['symbol'] == i, 'MV']
+            y_axis = daily_asset_metrics.loc[daily_asset_metrics['symbol'] == i, 'mv']
 
             plt.plot(x_axis, y_axis, label=i)
             plt.title(i)
@@ -201,7 +203,7 @@ def graph_mv_stacked(portfolio):
     ##  Show MV of each symbol in the same graph Stacked
     daily_asset_metrics = portfolio.daily_asset_metrics
 
-    pivoted_df = daily_asset_metrics[['date', 'symbol', 'MV']].pivot(index='date', columns='symbol', values='MV')
+    pivoted_df = daily_asset_metrics[['date', 'symbol', 'mv']].pivot(index='date', columns='symbol', values='mv')
     pivoted_df.fillna(0, inplace=True)
 
     # sort it by when I invested in it....
@@ -225,6 +227,10 @@ def graph_mv_stacked(portfolio):
 #
 # tickers = settings.TICKERS_DICT
 # datapoints = settings.DATAPOINTS
+
+
+
+
 
 def print_financials(tickers, datapoints):
     financials = data_loader.load_financials(datapoints, tickers)
