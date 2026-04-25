@@ -219,30 +219,32 @@ class DailyMetrics():
         """"
         calculates maximum drawdown
         """
-        total_position = self.daily_portfolio_metrics
-        max_drawdown = 1
-        for i in total_position.index[1:]:
-            crnt_value = total_position.loc[total_position.index == i, 'nav'].iloc[0]
-            prev_peak = total_position.loc[total_position.index < i, 'nav'].max()
-            prev_peak_date = total_position.loc[total_position.index < i, 'nav'].idxmax()
-            
-            drawdown = crnt_value / prev_peak 
-            drawdown_abs = total_position.loc[total_position.index == i, 'prtf_mv'].iloc[0] - total_position.loc[total_position.index == prev_peak_date, 'prtf_mv'].iloc[0]
-            drawdown_abs_adj = sum(total_position.loc[(total_position.index >= prev_peak_date) & (total_position.index < i), 'prtf_cost_dtd'])
-            
-            crnt_value - prev_peak
-            if drawdown <= max_drawdown:
-                max_drawdown = drawdown 
-                max_drawdown_abs = drawdown_abs - drawdown_abs_adj
-                peak_date = prev_peak_date
-                through_date = i
-               
-        
-        return print("Max drawdown was: " +  f"{((max_drawdown -1) * 100):,.1f}" + "% (" + f"{max_drawdown_abs:,.0f}"  + " EUR ) from: " + str(peak_date.strftime("%Y-%m-%d")) + " to " + str(through_date.strftime("%Y-%m-%d")))
+        nav = self.daily_portfolio_metrics['nav']
+
+        # Peak
+        peak = nav.cummax()
+        drawdown = nav / peak
+
+        # get peak/through idx
+        trough_idx = drawdown.idxmin()
+        max_drawdown = drawdown.loc[trough_idx]
+        peak_idx = nav.loc[:trough_idx].idxmax() # Finds the last max before the through
+
+        mv = self.daily_portfolio_metrics['prtf_mv']
+        max_drawdown_abs = mv.loc[trough_idx] - mv.loc[peak_idx]
+
+        # Cost adjustments for cash inflows/outflows
+        cost_adj = self.daily_portfolio_metrics.loc[peak_idx:trough_idx, 'prtf_cost_dtd'].iloc[:-1].sum()
+        max_drawdown_abs = max_drawdown_abs - cost_adj
+
+        return print("Max drawdown was: " +  f"{((max_drawdown -1) * 100):,.1f}" + "% (" + f"{max_drawdown_abs:,.0f}"  + " EUR ) from: " + str(peak_idx.strftime("%Y-%m-%d")) + " to " + str(trough_idx.strftime("%Y-%m-%d")) + " (US Tarrifs)")
 
 
 def calc_hvar(daily_asset_metrics, price_series_df, confidence_lvl = 95):
-    #calculates VaR for the most recent date
+    """"
+    Calculates VaR for the most recent date
+    """
+
     df = daily_asset_metrics.loc[:, ['date', 'symbol', 'outstanding_position', 'mv'] ]
     #var date
     var_date = df.iloc[-1]['date']
