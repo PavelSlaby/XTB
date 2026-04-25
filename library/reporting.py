@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sun Oct  5 21:22:52 2025
-
-reporting
-
-@author: pavel
+ functions to make the reporting of metrics more user-friendly
 """
 
 import logging
@@ -22,10 +18,8 @@ def format_accounting(value) -> str:
         return ""
     return f"{int(value):,}"
 
-
 def format_percent(value: float):
     return f"{value:.2f}"
-
 
 # Current Statistics:
 def print_crnt_prtf_stats(portfolio, price_series_df):
@@ -40,7 +34,7 @@ def print_crnt_prtf_stats(portfolio, price_series_df):
     invested_own_funds = daily_portfolio_metrics['prtf_cost_sum'].iloc[-1]
     prtf_tot_rtn_1y = daily_portfolio_metrics['1Y_rtn'].iloc[-1] * 100
     prtf_sharpe_1y = daily_portfolio_metrics['1Y_sharpe'].iloc[-1]
-    prtf_sharpe_3y = daily_portfolio_metrics['3Y_sharpe'].iloc[-1]
+    prtf_sharpe_2y = daily_portfolio_metrics['2Y_sharpe'].iloc[-1]
 
     print('\n PnL:')
     print(f"Total Portfolio Return LTD is: {prtf_tot_rtn_ltd:.2f}%")
@@ -54,7 +48,7 @@ def print_crnt_prtf_stats(portfolio, price_series_df):
 
     print('\n Risk:')
     print(f"Sharpe 1Y is: {prtf_sharpe_1y:.2f}")
-    print(f"Sharpe 3Y is: {prtf_sharpe_3y:.2f}")
+    print(f"Sharpe 2Y is: {prtf_sharpe_2y:.2f}")
 
     portfolio.get_biggest_daily_loss()
     portfolio.get_biggest_daily_gain()
@@ -67,6 +61,9 @@ def print_crnt_prtf_stats(portfolio, price_series_df):
 
 
 def overview_per_ticker(portfolio):
+    """"
+    Prints a quick summary of the PnL metrics per ticker
+    """
     aggregated_stats = portfolio.daily_asset_metrics.groupby('symbol').agg({
                                                             'pnl_tot_ltd': 'last',
                                                             'pnl_rel_tot_ltd': 'last',
@@ -80,24 +77,27 @@ def overview_per_ticker(portfolio):
     aggregated_stats['MV_%'] = aggregated_stats['mv'] / sum(aggregated_stats['mv']) * 100
 
     aggregated_stats = aggregated_stats.rename(columns = {
-                                        'pnl_tot_ltd' : 'PL_Tot_LTD',
-                                        'pnl_rel_tot_ltd' :  'PL_Tot_LTD_%',
-                                        'pnl_dtd' : 'PL_DTD',
-                                        'outstanding_position' : 'Outstanding_Position',
-                                        'cost_cumsum' : 'Invested_Amount'
-                                     })
+                                                        'pnl_tot_ltd' : 'PL_Tot_LTD',
+                                                        'pnl_rel_tot_ltd' :  'PL_Tot_LTD_%',
+                                                        'pnl_dtd' : 'PL_DTD',
+                                                        'outstanding_position' : 'Outstanding_Position',
+                                                        'cost_cumsum' : 'Invested_Amount',
+                                                        'mv': 'MV',
+                                                        'price': 'Price'
+                                                     })
 
     aggregated_stats['PL_Tot_LTD_%'] = aggregated_stats['PL_Tot_LTD_%'] * 100
-
     aggregated_stats = aggregated_stats.sort_values(by = 'MV_%', ascending = False )
 
     aggregated_stats['PL_Tot_LTD']      = aggregated_stats['PL_Tot_LTD'].apply(format_accounting)
     aggregated_stats['PL_DTD']          = aggregated_stats['PL_DTD'].apply(format_accounting)
-    aggregated_stats['mv']              = aggregated_stats['mv'].apply(format_accounting)
+    aggregated_stats['MV']              = aggregated_stats['MV'].apply(format_accounting)
     aggregated_stats['Invested_Amount'] = aggregated_stats['Invested_Amount'].apply(format_accounting)
     aggregated_stats['PL_Tot_LTD_%']    = aggregated_stats['PL_Tot_LTD_%'].apply(format_percent)
-    aggregated_stats['price']           = aggregated_stats['price'].apply(format_percent)
+    aggregated_stats['Price']           = aggregated_stats['Price'].apply(format_percent)
     aggregated_stats['MV_%']            = aggregated_stats['MV_%'].apply(format_percent)
+
+    aggregated_stats.loc[aggregated_stats['Outstanding_Position'] == 0,'PL_DTD'] = 0 # when position is sold, do not take the last PL DtD, but rather a  0
 
     print("Overview per share")
     print(tabulate(aggregated_stats, headers=aggregated_stats.columns, numalign="center", tablefmt="grid"))

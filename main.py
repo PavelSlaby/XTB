@@ -15,11 +15,11 @@ Project structure: https://github.com/pslaby/portfolio-analytics
 '''
     TODO: 
     
-    - I finished with reviewing the establish_bmk function
-    - check the metrics pnl columns, there are some -inf also visible in the final output....
+    - next step is to review the reporting module
+    
+    - think of renaming cost_cumsum -> "purchase_sales_ltd" it really only sums up sales and purchases, other items are added only later in pnl_items object 
     
         - sortino ratio
-        - investigate other trade types in the orders from XTB
         - double check since when the dataloader loads the market prices - what timeframe I need for VaR, and if it does not download unnecessarily too long history
         - make sure all different transaction types are loaded, it seems some could not be - correction etc...
     
@@ -132,9 +132,9 @@ def run_reporting(portfolio, price_series_df):
 
     reporting.print_financials(filtered, settings.DATAPOINTS)
 
-#%% Actual running of functions ---------------------------------------------------------------------------------
+#%% Actual running of functions ----------------------------------------------------------------------------------------
 
-# Load data
+# Load data-------------------------------------------------------------------------------------------------------------
 
 logger.info("Loading data............")
 outputs = load_data(xtb_input)
@@ -148,22 +148,20 @@ price_series_df = outputs["price_series_df"]
 # Data Checks
 data_loader.check_constants_exist(tickers_df, orders_df)
 
+# Creates Main Metrics -------------------------------------------------------------------------------------------------
 logger.info("Creating metrics...................")
 portfolio = create_metrics(outputs)
-# creates metrics object, it is an object that contains 2 DF - daily asset metrics and daily portfolio metrics
-# daily asset metrics - contains metrics per asset
-# daily portfolio metrics - contains metrics per entire portfolio
+"""
+Creates metrics object, it is an object that contains 2 DF:
+    daily_asset_metrics - contains metrics per asset
+    daily_portfolio_metrics - contains metrics per entire portfolio
+"""
 
-
-#%% main data objects: ------------------------------------------------------------------------------
-# pnl per each asset
 daily_asset_metrics = portfolio.daily_asset_metrics
-
-# daily portfolio metrics
 daily_portfolio_metrics = portfolio.daily_portfolio_metrics
 
 
-#%% Reporting -----------------------------------------------------------------------------------------
+#%% Reporting ---------------------------------------------------------------------------------------------------------
 logger.info("Running reporting.............")
 run_reporting(portfolio, price_series_df)
 

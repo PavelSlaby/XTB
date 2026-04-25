@@ -72,12 +72,20 @@ class DailyMetrics():
         daily_asset_metrics['pnl_tot_ltd'] = daily_asset_metrics.groupby(['symbol'])['pnl_tot_dtd'].cumsum()     
         # LTD rel
         daily_asset_metrics['pnl_rel_ltd'] = daily_asset_metrics['pnl_ltd'] / daily_asset_metrics['cost_cumsum'] * -1
+
+            # For the last day when position is liquidated
+        daily_asset_metrics.loc[daily_asset_metrics['outstanding_position'] == 0, 'pnl_rel_ltd'] = daily_asset_metrics['other_pnl'] / (daily_asset_metrics['amount'])
+
         # LTD Tot rel
         daily_asset_metrics['pnl_rel_tot_ltd'] = daily_asset_metrics['pnl_tot_ltd'] / daily_asset_metrics['cost_cumsum'] * -1
+
+            # For the last day when position is liquidated
+        daily_asset_metrics.loc[daily_asset_metrics['outstanding_position'] == 0, 'pnl_rel_tot_ltd'] = daily_asset_metrics[
+                                                                                                       'pnl_tot_ltd'] / (
+                                                                                                   daily_asset_metrics[
+                                                                                                       'amount'])
         # DTD rel
         daily_asset_metrics['pnl_rel_dtd'] = daily_asset_metrics['pnl_tot_dtd'] / (daily_asset_metrics['pnl_tot_ltd'] - daily_asset_metrics['pnl_tot_dtd'])
-
-        daily_asset_metrics.replace([np.inf, -np.inf], np.nan, inplace = True)
 
         self.daily_asset_metrics = daily_asset_metrics
         
@@ -124,39 +132,36 @@ class DailyMetrics():
         total_position['total_units'] = 1.0
         total_position['nav'] = 1.0
 
-        for i in range(len(total_position['total_units'])):
-            
-            if i == 0: # probably faster if I get rif of the IF and just do it beforehad, so that the if conditiona does not hvae to eb evaluated each time
-                total_position.iloc[i, total_position.columns.get_loc('total_units')] =  total_position.iloc[i, total_position.columns.get_loc('prtf_cost_dtd')]
-                total_position.iloc[i, total_position.columns.get_loc('nav')] =  (
-                                                total_position.iloc[i, total_position.columns.get_loc('prtf_mv')].iloc[0] 
-                                              / total_position.iloc[i, total_position.columns.get_loc('total_units')].iloc[0]
-                                                                                  )
+        cost_col    = total_position.columns.get_loc(('prtf_cost_dtd', ''))
+        mv_col      = total_position.columns.get_loc(('prtf_mv', ''))
+        units_col   = total_position.columns.get_loc(('total_units', ''))
+        nav_col     = total_position.columns.get_loc(('nav', ''))
+        other_col   = total_position.columns.get_loc(('prtf_other_pnl', ''))
 
-            else:
-                total_position.iloc[i, total_position.columns.get_loc('total_units')] = ( 
-                                                                                 total_position.iloc[i - 1, total_position.columns.get_loc('total_units')].iloc[0]
-                                                                                 + 
-                                                                                 total_position.iloc[i, total_position.columns.get_loc('prtf_cost_dtd')].iloc[0] 
-                                                                                                                                                                
-                                                                                 / total_position.iloc[i - 1, total_position.columns.get_loc('nav')].iloc[0]
-                                                                                         )
-              
-                # total_position.iloc[i, total_position.columns.get_loc('nav')] = (
-                #                                                                    total_position.iloc[i, total_position.columns.get_loc('prtf_mv')].iloc[0]
-                #                                                                  / total_position.iloc[i, total_position.columns.get_loc('total_units')].iloc[0]
-                #                                                                 )
+        n = len(total_position)
 
-        # total_position.loc[:,  'nav'] = total_position.loc[:,  'prtf_mv'] + / total_position.loc[:,  'total_units']
+        # Initial values
+        total_position.iloc[0, units_col] = total_position.iloc[0, cost_col]
+        total_position.iloc[0, nav_col] = total_position.iloc[0, mv_col] / total_position.iloc[0, units_col]
 
+        # Iterate day by day - it can not be done without iteration
+        for i in range(1, n):
+            prev_units = total_position.iloc[i - 1, units_col]
+            prev_nav = total_position.iloc[i - 1, nav_col]
 
+            cost = total_position.iloc[i, cost_col]
+            mv = total_position.iloc[i, mv_col]
 
-        # total_position['unit_rtn_tot_dtd'] = total_position['nav'] / total_position['nav'].shift(1) - 1
+            other_pnl =  total_position.iloc[i, other_col]
 
+            units = prev_units + cost / prev_nav
 
+            nav = (mv + other_pnl)/ units
 
+            total_position.iloc[i, units_col] = units
+            total_position.iloc[i, nav_col] = nav
 
-
+        total_position['unit_rtn_tot_dtd'] = total_position['nav'] / total_position['nav'].shift(1) - 1
 
         self.daily_portfolio_metrics = total_position
        
@@ -167,19 +172,14 @@ class DailyMetrics():
 
         # 1Y Sharpe ratio
         total_position = self.daily_portfolio_metrics
-        total_position['1Y_rtn'] = total_position["unit_rtn_tot_dtd"].rolling(window=365).apply(lambda x: (x +1).prod(), raw=True) - 1 
-        total_position['1Y_excess_rtn'] = total_position['1Y_rtn'] - risk_free_rate
+        total_position['1Y_rtn']            = total_position["unit_rtn_tot_dtd"].rolling(window=365).apply(lambda x: (x + 1).prod(), raw=True) - 1
+        total_position['1Y_excess_rtn']     = total_position['1Y_rtn'] - risk_free_rate
         total_position['1Y_excess_std_dev'] = total_position['1Y_excess_rtn'].rolling(window=365).apply(lambda x: x.std(), raw=True)
-        total_position['1Y_sharpe'] = total_position['1Y_excess_rtn']  / total_position['1Y_excess_std_dev']
+        total_position['1Y_sharpe']         = total_position['1Y_excess_rtn']  / total_position['1Y_excess_std_dev']
 
         # 3Y Sharpe ratio
-        total_position = self.daily_portfolio_metrics
-        total_position['3Y_rtn'] = total_position["unit_rtn_tot_dtd"].rolling(window=365 * 3).apply(
-            lambda x: (x + 1).prod(), raw=True) - 1
-        total_position['3Y_excess_rtn'] = total_position['3Y_rtn'] - risk_free_rate
-        total_position['3Y_excess_std_dev'] = total_position['3Y_excess_rtn'].rolling(window=365 * 3).apply(
-            lambda x: x.std(), raw=True)
-        total_position['3Y_sharpe'] = total_position['3Y_excess_rtn'] / total_position['3Y_excess_std_dev']
+        total_position['2Y_excess_std_dev'] = total_position['1Y_excess_rtn'].rolling(window=365 * 2).apply(lambda x: x.std(), raw=True)
+        total_position['2Y_sharpe'] = total_position['1Y_excess_rtn'] / total_position['2Y_excess_std_dev']
 
         self.daily_portfolio_metrics = total_position
       
@@ -245,7 +245,7 @@ def calc_hvar(daily_asset_metrics, price_series_df, confidence_lvl = 95):
     var_date = df.iloc[-1]['date']
     
     #curernt market value
-    crnt_mv =  df.loc[df['date'] == var_date, 'mv'].sum()          
+    crnt_mv =  df.loc[df['date'] == var_date, 'mv'].sum()
 
     #current positions
     df = df.loc[df['date'] == var_date, ['symbol', 'mv', 'outstanding_position']]
