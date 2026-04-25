@@ -27,14 +27,14 @@ def print_crnt_prtf_stats(portfolio, price_series_df):
 
     daily_portfolio_metrics = portfolio.daily_portfolio_metrics
 
-    prtf_tot_rtn_ltd = daily_portfolio_metrics['prtf_tot_rtn_ltd'].iloc[-1] * 100
-    nav_per_share = daily_portfolio_metrics['nav'].iloc[-1]
-    prtf_pnl_tot_ltd = daily_portfolio_metrics['prtf_pnl_tot_ltd'].iloc[-1]
-    prtf_mv = daily_portfolio_metrics['prtf_mv'].iloc[-1]
-    invested_own_funds = daily_portfolio_metrics['prtf_cost_sum'].iloc[-1]
-    prtf_tot_rtn_1y = daily_portfolio_metrics['1Y_rtn'].iloc[-1] * 100
-    prtf_sharpe_1y = daily_portfolio_metrics['1Y_sharpe'].iloc[-1]
-    prtf_sharpe_2y = daily_portfolio_metrics['2Y_sharpe'].iloc[-1]
+    prtf_tot_rtn_ltd    = daily_portfolio_metrics['prtf_tot_rtn_ltd'].iloc[-1] * 100
+    nav_per_share       = daily_portfolio_metrics['nav'].iloc[-1]
+    prtf_pnl_tot_ltd    = daily_portfolio_metrics['prtf_pnl_tot_ltd'].iloc[-1]
+    prtf_mv             = daily_portfolio_metrics['prtf_mv'].iloc[-1]
+    invested_own_funds  = daily_portfolio_metrics['prtf_cost_sum'].iloc[-1]
+    prtf_tot_rtn_1y     = daily_portfolio_metrics['1Y_rtn'].iloc[-1] * 100
+    prtf_sharpe_1y      = daily_portfolio_metrics['1Y_sharpe'].iloc[-1]
+    prtf_sharpe_2y      = daily_portfolio_metrics['2Y_sharpe'].iloc[-1]
 
     print('\n PnL:')
     print(f"Total Portfolio Return LTD is: {prtf_tot_rtn_ltd:.2f}%")

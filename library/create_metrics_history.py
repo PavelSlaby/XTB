@@ -184,38 +184,41 @@ class DailyMetrics():
         self.daily_portfolio_metrics = total_position
       
     def get_biggest_daily_loss(self):
-        # Calculates biggest daily loss
+        """"
+        Calculates biggest daily loss
+        """
         daily_portfolio_metrics = self.daily_portfolio_metrics
-        unit_rtn = daily_portfolio_metrics['unit_rtn_tot_dtd'].fillna(0)
+        daily_portfolio_metrics.loc[daily_portfolio_metrics.index[0],'unit_rtn_tot_dtd']  = 0
+        unit_rtn = daily_portfolio_metrics.loc[:, 'unit_rtn_tot_dtd']
         biggest_daily_loss_index = daily_portfolio_metrics.index[unit_rtn == unit_rtn.min()]
         prev_day = biggest_daily_loss_index - pd.Timedelta(days = 1)
 
-        loss = (daily_portfolio_metrics.loc[daily_portfolio_metrics.index == biggest_daily_loss_index[0], 'prtf_mv'].iloc[0] 
-                        - daily_portfolio_metrics.loc[daily_portfolio_metrics.index == prev_day[0], 'prtf_mv'].iloc[0]
-                )
+        loss = daily_portfolio_metrics.at[biggest_daily_loss_index[0], ('prtf_mv', '')] -  daily_portfolio_metrics.at[prev_day[0], ('prtf_mv', '')]
 
         return print("Biggest daily loss was: " + f"{loss:,.0f}"  + " EUR on: " + str(biggest_daily_loss_index[0].strftime("%Y-%m-%d")))
 
 
     def get_biggest_daily_gain(self):
-        # Calculates biggest daily loss
+        """"
+        Calculates biggest daily gain
+        """
+
         daily_portfolio_metrics = self.daily_portfolio_metrics
-        
-        unit_rtn = daily_portfolio_metrics['unit_rtn_tot_dtd'].fillna(0)
+        daily_portfolio_metrics.loc[daily_portfolio_metrics.index[0], 'unit_rtn_tot_dtd'] = 0
+        unit_rtn = daily_portfolio_metrics.loc[:, 'unit_rtn_tot_dtd']
         biggest_daily_gain_index = daily_portfolio_metrics.index[unit_rtn == unit_rtn.max()]
         prev_day = biggest_daily_gain_index - pd.Timedelta(days = 1)
-        
 
+        gain = daily_portfolio_metrics.at[biggest_daily_gain_index[0], ('prtf_mv', '')] - daily_portfolio_metrics.at[
+            prev_day[0], ('prtf_mv', '')]
 
-        gain = (daily_portfolio_metrics.loc[daily_portfolio_metrics.index == biggest_daily_gain_index[0], 'prtf_mv'].iloc[0]   
-                - daily_portfolio_metrics.loc[daily_portfolio_metrics.index == prev_day[0], 'prtf_mv'].iloc[0]
-                )
-        
         return print("Biggest daily gain was: " +  f"{gain:,.0f}" + " EUR on: " + str(biggest_daily_gain_index[0].strftime("%Y-%m-%d")))
 
     
     def get_maximum_drawdown(self):
-        # calculates maximum drawdown
+        """"
+        calculates maximum drawdown
+        """
         total_position = self.daily_portfolio_metrics
         max_drawdown = 1
         for i in total_position.index[1:]:
