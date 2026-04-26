@@ -178,10 +178,10 @@ def graph_assets_mv(portfolio, one_graph = True):
 
     if one_graph:
         # All symbols in one graph
-        for i in daily_asset_metrics['symbol'].unique():
-            x_axis = daily_asset_metrics.loc[daily_asset_metrics['symbol'] == i, 'date']
-            y_axis = daily_asset_metrics.loc[daily_asset_metrics['symbol'] == i, 'mv']
-            plt.plot(x_axis, y_axis, label=i)
+        for i, symbol in enumerate(daily_asset_metrics['symbol'].unique()):
+            x_axis = daily_asset_metrics.loc[daily_asset_metrics['symbol'] == symbol, 'date']
+            y_axis = daily_asset_metrics.loc[daily_asset_metrics['symbol'] == symbol, 'mv']
+            plt.plot(x_axis, y_axis, label=symbol)
 
         plt.title('MV Growth')
         plt.legend(loc=0)
