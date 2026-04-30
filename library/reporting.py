@@ -89,6 +89,8 @@ def overview_per_ticker(portfolio):
     aggregated_stats['PL_Tot_LTD_%'] = aggregated_stats['PL_Tot_LTD_%'] * 100
     aggregated_stats = aggregated_stats.sort_values(by = 'MV_%', ascending = False )
 
+    aggregated_stats.loc[aggregated_stats['Outstanding_Position'] == 0, 'PL_DTD'] = 0  # when position is sold, do not take the last PL DtD, but rather a  0
+
     aggregated_stats['PL_Tot_LTD']      = aggregated_stats['PL_Tot_LTD'].apply(format_accounting)
     aggregated_stats['PL_DTD']          = aggregated_stats['PL_DTD'].apply(format_accounting)
     aggregated_stats['MV']              = aggregated_stats['MV'].apply(format_accounting)
@@ -96,8 +98,6 @@ def overview_per_ticker(portfolio):
     aggregated_stats['PL_Tot_LTD_%']    = aggregated_stats['PL_Tot_LTD_%'].apply(format_percent)
     aggregated_stats['Price']           = aggregated_stats['Price'].apply(format_percent)
     aggregated_stats['MV_%']            = aggregated_stats['MV_%'].apply(format_percent)
-
-    aggregated_stats.loc[aggregated_stats['Outstanding_Position'] == 0,'PL_DTD'] = 0 # when position is sold, do not take the last PL DtD, but rather a  0
 
     print("Overview per share")
     print(tabulate(aggregated_stats, headers=aggregated_stats.columns, numalign="center", tablefmt="grid"))
