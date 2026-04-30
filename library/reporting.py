@@ -108,7 +108,7 @@ def simulate_bmk_rtn(benchmark_symbol, portfolio, price_series_df):
 
     daily_positions_df = portfolio.daily_asset_metrics
 
-    invested_amount = daily_positions_df[['date', 'amount']].groupby('date').sum('amount')
+    invested_amount = daily_positions_df[['date', 'amount']].groupby('date')['amount'].sum()
     benchmark_price_series_df = price_series_df.loc[price_series_df['symbol'] == benchmark_symbol, ['price']]
 
     invested_amount_price = pd.merge(invested_amount, benchmark_price_series_df, how='left', left_on='date',

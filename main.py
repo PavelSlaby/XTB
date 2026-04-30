@@ -1,4 +1,4 @@
-'''
+"""
 main.py
 
 Main script for running portfolio analytics.
@@ -9,17 +9,19 @@ This script:
 - Prepares data for portfolio analysis, risk, and reporting modules
 
 Project structure: https://github.com/pslaby/portfolio-analytics
-'''
+"""
 
 
 '''
     TODO: 
     
     - next step is to review the reporting module
+        - overview_per_ticker
     
     - think of renaming cost_cumsum -> "purchase_sales_ltd" it really only sums up sales and purchases, other items are added only later in pnl_items object 
     
         - sortino ratio
+        - add realized and mtm of unrealized position into the main table...
         - double check since when the dataloader loads the market prices - what timeframe I need for VaR, and if it does not download unnecessarily too long history
         - make sure all different transaction types are loaded, it seems some could not be - correction etc...
     
