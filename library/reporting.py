@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
  functions to make the reporting of metrics more user-friendly
 """
@@ -9,7 +8,6 @@ import library.create_metrics_history  as create_metrics_history  # creates port
 import matplotlib.pyplot as plt
 import pandas as pd
 import library.data_loader as data_loader
-import library.settings as settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,9 +19,11 @@ def format_accounting(value) -> str:
 def format_percent(value: float):
     return f"{value:.2f}"
 
-# Current Statistics:
-def print_crnt_prtf_stats(portfolio, price_series_df):
-    logger.info('Printing current portfolio stats')
+def print_current_portfolio_metrics(portfolio, price_series_df):
+    """
+    prints the most recent profit and risk metrics
+    """
+    logger.info('Printing current portfolio risk metrics')
 
     daily_portfolio_metrics = portfolio.daily_portfolio_metrics
 
@@ -104,23 +104,27 @@ def overview_per_ticker(portfolio):
 
 
 def simulate_bmk_rtn(benchmark_symbol, portfolio, price_series_df):
-    daily_portfolio_metrics = portfolio.daily_portfolio_metrics
+    """"
+    Simulates what the return on the portfolio would have been if I was only investing in the benchmark symbol,
+    exactly the same amounts of money at the same times as I did the other investments
+    """
 
+    daily_portfolio_metrics = portfolio.daily_portfolio_metrics
     daily_positions_df = portfolio.daily_asset_metrics
 
-    invested_amount = daily_positions_df[['date', 'amount']].groupby('date')['amount'].sum()
+    invested_amount = daily_positions_df[['date', 'amount']].groupby('date')['amount'].sum() # the amount and time I did the investments of the current portfolio
     benchmark_price_series_df = price_series_df.loc[price_series_df['symbol'] == benchmark_symbol, ['price']]
 
     invested_amount_price = pd.merge(invested_amount, benchmark_price_series_df, how='left', left_on='date',
                                      right_on='date')
-    invested_amount_price.loc[invested_amount_price['amount'] == 0, 'amount'] = 0  # np.nan
+    #invested_amount_price.loc[invested_amount_price['amount'] == 0, 'amount'] = 0  # np.nan
     invested_amount_price['direction'] = invested_amount_price['amount'] * -1 / invested_amount_price['price']
     invested_amount_price['cost_cumsum'] = invested_amount_price['amount'].cumsum() * -1
     invested_amount_price['direction_cumsum'] = invested_amount_price['direction'].cumsum()
     invested_amount_price['mv'] = invested_amount_price['direction_cumsum'] * invested_amount_price['price']
     invested_amount_price['Total_Rel_Rtn'] = invested_amount_price['mv'] / invested_amount_price['cost_cumsum'] - 1
 
-    # graph
+    # Graph
     x_axis = daily_portfolio_metrics.index
     y_axis1 = daily_portfolio_metrics['prtf_pnl_ltd']
     y_axis2 = daily_portfolio_metrics['prtf_mv']
@@ -148,11 +152,11 @@ def simulate_bmk_rtn(benchmark_symbol, portfolio, price_series_df):
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax2.legend(lines + lines2, labels + labels2, loc=0)
 
+    plt.show()
+
     prtf_tot_rtn_last = daily_portfolio_metrics['prtf_tot_rtn_ltd'].tail(1).iloc[0] * 100
     prtf_rtn_last = daily_portfolio_metrics['prtf_rtn_ltd'].tail(1).iloc[0] * 100
     total_rel_rtn_last = invested_amount_price['Total_Rel_Rtn'].tail(1).iloc[0] * 100
-
-    plt.show()
 
     print("Benchmark symbol is: " + benchmark_symbol)
     print("note that this simulation does not consider DIVIDENTs....")
@@ -163,17 +167,17 @@ def simulate_bmk_rtn(benchmark_symbol, portfolio, price_series_df):
 
 
 def plot_ticker_mv(xtb_symbol, portfolio):
+    """"
+    Plots the development of MV of a selected Ticker
+    """
     portfolio.daily_asset_metrics.loc[portfolio.daily_asset_metrics['symbol'] == xtb_symbol, ['symbol', 'mv'] ].plot()
     plt.show()
 
-
-
-
-plt.rcParams['figure.figsize'] = [8, 8]
-
-
-
 def graph_assets_mv(portfolio, one_graph = True):
+    """"
+    Graphs the MV development of all assets ever held in the portfolio
+    """
+
     daily_asset_metrics = portfolio.daily_asset_metrics
 
     if one_graph:
@@ -200,13 +204,15 @@ def graph_assets_mv(portfolio, one_graph = True):
 
 
 def graph_mv_stacked(portfolio):
-    ##  Show MV of each symbol in the same graph Stacked
+    """"
+    Graphs the MV development of all assets ever held in the portfolio in a stacked graph
+    """
     daily_asset_metrics = portfolio.daily_asset_metrics
 
     pivoted_df = daily_asset_metrics[['date', 'symbol', 'mv']].pivot(index='date', columns='symbol', values='mv')
     pivoted_df.fillna(0, inplace=True)
 
-    # sort it by when I invested in it....
+    # Sort it by when I invested in it....
     sorting_list = []
     for i in pivoted_df.columns:
         sorting_list.append([i, pivoted_df.loc[:, i].loc[pivoted_df.loc[:, i] != 0].index[0]])
@@ -220,17 +226,6 @@ def graph_mv_stacked(portfolio):
     ax.set_ylabel('EUR')
     plt.legend(loc=2)
     plt.show()
-
-
-
-# reporting.print_financials(tickers_dict , settings.DATAPOINTS)
-#
-# tickers = settings.TICKERS_DICT
-# datapoints = settings.DATAPOINTS
-
-
-
-
 
 def print_financials(tickers, datapoints):
     financials = data_loader.load_financials(datapoints, tickers)

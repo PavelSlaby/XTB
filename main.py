@@ -16,7 +16,8 @@ Project structure: https://github.com/pslaby/portfolio-analytics
     TODO: 
     
     - next step is to review the reporting module
-        - overview_per_ticker
+        - review var in print_current_portfolio_metrics - I skipped var in that one....
+        - and then continue with: graph_mv_stacked
     
     - think of renaming cost_cumsum -> "purchase_sales_ltd" it really only sums up sales and purchases, other items are added only later in pnl_items object 
     
@@ -121,7 +122,7 @@ def create_metrics(outputs):
 
 def run_reporting(portfolio, price_series_df):
     reporting.overview_per_ticker(portfolio)
-    reporting.print_crnt_prtf_stats(portfolio, price_series_df)
+    reporting.print_current_portfolio_metrics(portfolio, price_series_df)
     reporting.simulate_bmk_rtn(benchmark_ticker, portfolio, price_series_df)
     reporting.plot_ticker_mv(default_plot_ticker, portfolio)
     reporting.graph_assets_mv(portfolio, one_graph=True)
