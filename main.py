@@ -15,9 +15,8 @@ Project structure: https://github.com/pslaby/portfolio-analytics
 '''
     TODO: 
     
-    - next step is to review the reporting module
-        - review var in print_current_portfolio_metrics - I skipped var in that one....
-        - and then continue with: graph_mv_stacked
+    - next step is to review the  var in print_current_portfolio_metrics - I skipped var in that one....
+        and then its all reviewed and done. 
     
     - think of renaming cost_cumsum -> "purchase_sales_ltd" it really only sums up sales and purchases, other items are added only later in pnl_items object 
     
@@ -130,7 +129,7 @@ def run_reporting(portfolio, price_series_df):
 
     logger.info("Printing fundamentals for portfolio assets..takes a bit...")
 
-    keys = portfolio.daily_asset_metrics.loc[portfolio.daily_asset_metrics['date'] == datetime.today().strftime('%Y-%m-%d'), 'symbol']
+    keys = portfolio.daily_asset_metrics.loc[portfolio.daily_asset_metrics['date'] == datetime.today().strftime('%Y-%m-%d'), 'symbol'] # picks only those that still have a position
     filtered = {k: settings.TICKERS_DICT[k] for k in keys if k in settings.TICKERS_DICT}
 
     reporting.print_financials(filtered, settings.DATAPOINTS)
