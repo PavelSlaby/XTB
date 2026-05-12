@@ -7,6 +7,7 @@ This script:
 - Loads transaction and market data
 - Runs core data transformation
 - Prepares data for portfolio analysis, risk, and reporting modules
+- total return seems to be smaller then the actual return
 
 Project structure: https://github.com/pslaby/portfolio-analytics
 """
@@ -108,6 +109,9 @@ def create_metrics(outputs):
     metrics_obj = create_metrics_history.DailyMetrics(daily_positions_df)
     metrics_obj.calculate_mv()
     metrics_obj.include_other_pnl_items(pnl_items_obj.pnl_items_other_sum)
+
+    metrics_obj.get_closed_positions(pnl_items_obj.pnl_closed_positions)
+
     metrics_obj.calc_pnl()
     
     # Creates daily_portfolio_metrics DF which has portfolio level data

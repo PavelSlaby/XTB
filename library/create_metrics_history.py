@@ -20,15 +20,22 @@ class PnlItems():
     def __init__(self, orders_df: pd.DataFrame):
         self.orders_df = orders_df
         self.pnl_items_other_sum = None
+        self.pnl_closed_positions = None
         
     def prepare(self):
         # filter relevant types
         filtered = self.orders_df.loc[
-            self.orders_df['type'].isin(['DIVIDENT', 'Withholding tax', 'SEC fee','close trade', 'fractional shares', 'rights_issue']),
+            self.orders_df['type'].isin(['DIVIDENT', 'Withholding tax', 'SEC fee', 'fractional shares', 'rights_issue']),
                                 ['date', 'symbol', 'type', 'comment', 'amount', ] ].copy()
         
         self.pnl_items_other_sum = filtered.groupby(['date', 'symbol'])['amount'].sum().reset_index()
         self.pnl_items_other_sum['date'] = pd.to_datetime(self.pnl_items_other_sum['date'])
+
+        filtered_closed_pos = self.orders_df.loc[self.orders_df['type'].isin(['close trade']),['date', 'symbol', 'type', 'comment', 'amount', ]].copy()
+
+        self.pnl_closed_positions = filtered_closed_pos.groupby(['date', 'symbol'])['amount'].sum().reset_index()
+        self.pnl_closed_positions['date'] = pd.to_datetime(self.pnl_closed_positions['date'])
+
 
 
 class DailyMetrics():
@@ -47,6 +54,7 @@ class DailyMetrics():
         """"
         Merges sales/purchase orders with other PnL orders
         """
+
         daily_asset_metrics = pd.merge(self.daily_asset_metrics, other_pnl_items, left_on = ['date', 'symbol'], right_on = ['date', 'symbol'], how = 'left' )
 
         daily_asset_metrics.rename(columns = { 'amount_x': 'amount', 'amount_y': 'other_pnl'}, inplace = True )
@@ -54,7 +62,19 @@ class DailyMetrics():
 
         self.daily_asset_metrics = daily_asset_metrics
 
-    
+    def get_closed_positions(self, pnl_closed_positions):
+        """"
+        Adds closed positions
+        """
+
+        daily_asset_metrics = pd.merge(self.daily_asset_metrics, pnl_closed_positions, left_on = ['date', 'symbol'], right_on = ['date', 'symbol'], how = 'left' )
+
+        daily_asset_metrics.rename(columns = { 'amount_x': 'amount', 'amount_y': 'closed_positions'}, inplace = True )
+        daily_asset_metrics[['amount', 'closed_positions']] = daily_asset_metrics[['amount', 'closed_positions']].fillna(0)
+
+        self.daily_asset_metrics = daily_asset_metrics
+
+
     def calc_pnl(self):
         """"
         Adds several other PnL metrics to self.daily_asset_metrics

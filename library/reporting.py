@@ -67,23 +67,29 @@ def overview_per_ticker(portfolio):
     aggregated_stats = portfolio.daily_asset_metrics.groupby('symbol').agg({
                                                             'pnl_tot_ltd': 'last',
                                                             'pnl_rel_tot_ltd': 'last',
+                                                            'other_pnl': 'sum',
+                                                            'closed_positions': 'sum',
                                                             'pnl_dtd': 'last',
                                                             'outstanding_position': 'last',
                                                             'price': 'last',
                                                             'mv': 'last',
                                                             'cost_cumsum': 'last'
-                                                            })
+
+                                                        })
 
     aggregated_stats['MV_%'] = aggregated_stats['mv'] / sum(aggregated_stats['mv']) * 100
 
     aggregated_stats = aggregated_stats.rename(columns = {
                                                         'pnl_tot_ltd' : 'PL_Tot_LTD',
                                                         'pnl_rel_tot_ltd' :  'PL_Tot_LTD_%',
+                                                        'other_pnl': 'Dividends',
+                                                        'closed_positions': 'Closed Positions',
                                                         'pnl_dtd' : 'PL_DTD',
                                                         'outstanding_position' : 'Outstanding_Position',
                                                         'cost_cumsum' : 'Invested_Amount',
                                                         'mv': 'MV',
                                                         'price': 'Price'
+
                                                      })
 
     aggregated_stats['PL_Tot_LTD_%'] = aggregated_stats['PL_Tot_LTD_%'] * 100
@@ -98,6 +104,8 @@ def overview_per_ticker(portfolio):
     aggregated_stats['PL_Tot_LTD_%']    = aggregated_stats['PL_Tot_LTD_%'].apply(format_percent)
     aggregated_stats['Price']           = aggregated_stats['Price'].apply(format_percent)
     aggregated_stats['MV_%']            = aggregated_stats['MV_%'].apply(format_percent)
+    aggregated_stats['Dividends']       = aggregated_stats['Dividends'].apply(format_accounting)
+    aggregated_stats['Closed Positions'] = aggregated_stats['Closed Positions'].apply(format_accounting)
 
     print("Overview per share")
     print(tabulate(aggregated_stats, headers=aggregated_stats.columns, numalign="center", tablefmt="grid"))
