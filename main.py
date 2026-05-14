@@ -11,7 +11,7 @@ This script:
 
 Project structure: https://github.com/pslaby/portfolio-analytics
 """
-
+from matplotlib import pyplot as plt
 
 '''
     TODO: 
@@ -19,7 +19,7 @@ Project structure: https://github.com/pslaby/portfolio-analytics
     - next step is to review the  var in print_current_portfolio_metrics - I skipped var in that one....
         and then its all reviewed and done. 
     
-    - think of renaming cost_cumsum -> "purchase_sales_ltd" it really only sums up sales and purchases, other items are added only later in pnl_items object 
+    - portfolio return versus total portfolio return seems weird too big of a difference.....
     
         - sortino ratio
         - add realized and mtm of unrealized position into the main table...
@@ -172,4 +172,29 @@ logger.info("Running reporting.............")
 run_reporting(portfolio, price_series_df)
 
 
+#-----------------
 
+import matplotlib.pyplot as plt
+
+portfolio_total_pnl = daily_portfolio_metrics.loc[:, ['prtf_pnl_tot_ltd']]
+nav = daily_portfolio_metrics.loc[:, ['nav']]
+prtf_tot_rtn_ltd = daily_portfolio_metrics.loc[:, ['prtf_tot_rtn_ltd']]
+sharpe_1y = daily_portfolio_metrics.loc[:, ['1Y_sharpe']]
+
+x_axis = daily_portfolio_metrics.index
+
+fig, ax = plt.subplots()
+#ax.plot(x_axis, portfolio_total_pnl)
+ax.plot(x_axis, nav, label='nav')
+ax.plot(x_axis, sharpe_1y, label='sharpe_1y')
+ax.grid(True)
+
+ax2 = ax.twinx()
+#ax2.plot(x_axis, prtf_tot_rtn_ltd, label='prtf_tot_ltd')
+
+lines, labels = ax.get_legend_handles_labels()
+lines2, labels2 = ax2.get_legend_handles_labels()
+ax2.legend(lines + lines2, labels + labels2, loc=0)
+
+
+daily_portfolio_metrics.to_excel("test.xlsx")
