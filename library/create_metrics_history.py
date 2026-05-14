@@ -81,13 +81,13 @@ class DailyMetrics():
         """
         daily_asset_metrics = self.daily_asset_metrics
         # LTD (only position, before other items)
-        daily_asset_metrics['pnl_ltd'] = daily_asset_metrics['mv'] + daily_asset_metrics['cost_cumsum']  + daily_asset_metrics['closed_positions']
+        daily_asset_metrics['pnl_ltd'] = daily_asset_metrics['mv'] + daily_asset_metrics['cost_cumsum']  + daily_asset_metrics.groupby('symbol')['closed_positions'].cumsum()
         # DTD
         daily_asset_metrics = daily_asset_metrics.sort_values(['symbol', 'date'])
         daily_asset_metrics['pnl_dtd'] = daily_asset_metrics.groupby('symbol')['pnl_ltd'].diff()
         daily_asset_metrics.loc[daily_asset_metrics['pnl_dtd'].isna(), 'pnl_dtd' ] = daily_asset_metrics['pnl_ltd']
         # DTD Total
-        daily_asset_metrics['pnl_tot_dtd'] = daily_asset_metrics['pnl_dtd'] + daily_asset_metrics['other_pnl'] + daily_asset_metrics['closed_positions']
+        daily_asset_metrics['pnl_tot_dtd'] = daily_asset_metrics['pnl_dtd'] + daily_asset_metrics['other_pnl']
         # LTD Total
         daily_asset_metrics['pnl_tot_ltd'] = daily_asset_metrics.groupby(['symbol'])['pnl_tot_dtd'].cumsum()     
         # LTD rel
