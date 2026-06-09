@@ -10,6 +10,8 @@ This module contains functions to create the history of different metrics from p
 import pandas as pd
 import numpy as np
 import logging
+import datetime as dt
+
 
 logger = logging.getLogger(__name__)
 
@@ -259,43 +261,81 @@ class DailyMetrics():
 
         return print("Max drawdown was: " +  f"{((max_drawdown -1) * 100):,.1f}" + "% (" + f"{max_drawdown_abs:,.0f}"  + " EUR ) from: " + str(peak_idx.strftime("%Y-%m-%d")) + " to " + str(trough_idx.strftime("%Y-%m-%d")) + " (US Tarrifs)")
 
-
-def calc_hvar(daily_asset_metrics, price_series_df, confidence_lvl = 95):
-    """"
-    Calculates VaR for the most recent date
+def get_portfolio_weights(daily_asset_metrics):
+    """
+     gets portfolio weights, mv, and outstanding position per symbol
+     TODO: currently it just calculates var for all stocks currently in portfolio....try to generalize the function so, that it can work for any parameter (list of stocks)
     """
 
-    df = daily_asset_metrics.loc[:, ['date', 'symbol', 'outstanding_position', 'mv'] ]
-    #var date
-    var_date = df.iloc[-1]['date']
-    
-    #curernt market value
-    crnt_mv =  df.loc[df['date'] == var_date, 'mv'].sum()
+    # current var date
+    var_date = (dt.datetime.today() - dt.timedelta(days = 1)).strftime("%Y-%m-%d")
 
-    #current positions
-    df = df.loc[df['date'] == var_date, ['symbol', 'mv', 'outstanding_position']]
+    # current positions on the var date
+    current_position = daily_asset_metrics.loc[daily_asset_metrics['date'] == var_date, ['date', 'symbol', 'outstanding_position', 'mv']]
 
-    var = price_series_df.loc[price_series_df['symbol'].isin(df['symbol'].tolist()), ['price', 'symbol', 'currency']].reset_index()
-    var = pd.merge(var, df[['symbol',  'outstanding_position']], left_on = 'symbol', right_on = 'symbol', how = 'left' )
-    var = pd.merge(var, price_series_df[['symbol', 'price']].reset_index(), left_on = ['date', 'currency'], right_on = ['date', 'symbol'] , how = 'left')
-    del var['symbol_y']
-    var.rename(columns = {'symbol_x' : 'symbol', 'price_x': 'price', 'price_y': 'fx'}, inplace = True)
-    var.loc[var['fx'].isna(), 'fx'] = 1
-    
-    # Calculate MV of the portfolio for the past dates, assuming I would have held the current amount of shares.
-    var['prtf_mv'] =  var['price'] * var['fx'] * var['outstanding_position'] 
+    # current market value
+    current_mv = current_position['mv'].sum()
+    current_position['weight'] = current_position['mv']/current_mv
 
-    # drop records when prices are not available, such as 1.1.YY
-    var = var.dropna()
+    portfolio_weights = current_position
+    return portfolio_weights
 
-    # produce daily MV and the returns...
-    returns = pd.DataFrame()
-    returns['prtf_mv'] =  var.groupby('date').agg({'prtf_mv' : 'sum'})
-    returns['rtn'] = returns['prtf_mv'] / returns['prtf_mv'].shift(1) - 1
+def get_portfolio_values(price_series_df, portfolio_weights):
+    """
+    Prepares prices series for VaR - combines price series with portfolio weights
+    """
 
-    var_rel = np.percentile(returns['rtn'][1:], 100 - confidence_lvl) #first value is nan, thats why the slice
 
-    var_abs = crnt_mv * var_rel
+    price_position = price_series_df.loc[price_series_df['symbol'].isin(portfolio_weights['symbol'].tolist()), ['price', 'symbol', 'currency']].reset_index()
+    price_position = pd.merge(price_position, portfolio_weights[['symbol', 'outstanding_position', 'weight']], left_on='symbol', right_on='symbol', how='left')
+    price_position = pd.merge(price_position, price_series_df[['symbol', 'price']].reset_index(), left_on=['date', 'currency'], right_on=['date', 'symbol'], how='left')  # adds FX rates
+    del price_position['symbol_y']
+    price_position.rename(columns={'symbol_x': 'symbol', 'price_x': 'price', 'price_y': 'fx'}, inplace=True)
+    price_position.loc[price_position['fx'].isna(), 'fx'] = 1
+    price_position.dropna(inplace=True)
+    price_position['mv'] = price_position['price'] * price_position['fx'] * price_position['outstanding_position']
+
+    return price_position
+
+def get_returns(price_position, individual_var = False):
+    """"
+    calculates returns either per symbol or per entire portfolio
+    """
+    if individual_var:
+        price_position['daily_return'] = price_position.groupby('symbol')['mv'].pct_change()
+        returns = price_position
+    else:
+        returns = pd.DataFrame(data = price_position.groupby(['date'])['mv'].sum(), columns = ['mv'])
+        returns['daily_return'] = returns['mv'] / returns['mv'].shift(1) - 1
+
+    returns.dropna(inplace=True)
+
+    return returns
+
+def analyze_returns_distribution(returns):
+
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots()
+    returns['daily_return'].plot.hist(bins = 1000,  density = True, ax = ax)
+    returns['daily_return'].plot.density(ax = ax)
+    plt.title('Distribution of returns of all instruments')
+
+    # abs returns
+
+    returns['abs_return']  = returns['daily_return'] * returns['mv']
+    fig, ax = plt.subplots()
+    returns['abs_return'].plot.hist(bins = 1000,  density = True, ax = ax)
+    returns['abs_return'].plot.density(ax = ax)
+    plt.title('Distribution of returns of all instruments')
+
+
+
+def calc_hvar(returns, confidence_lvl = 90):
+
+    var_rel = np.percentile(returns['daily_return'], 100 - confidence_lvl) # first value is nan, that is why the slice
+
+    var_abs = returns['mv'][-1:] * var_rel
         
     return [round(var_rel, 4), round(var_abs, 1)]
 

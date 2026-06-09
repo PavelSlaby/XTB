@@ -11,6 +11,7 @@ This script:
 
 Project structure: https://github.com/pslaby/portfolio-analytics
 """
+import numpy as np
 from matplotlib import pyplot as plt
 
 '''
@@ -18,6 +19,7 @@ from matplotlib import pyplot as plt
     
     - next step is to review the  var in print_current_portfolio_metrics - I skipped var in that one....
         and then its all reviewed and done. 
+        - var is being calculated on t-1 date...try to make it live...
     
     - portfolio return versus total portfolio return seems weird too big of a difference.....
     
@@ -172,29 +174,113 @@ logger.info("Running reporting.............")
 run_reporting(portfolio, price_series_df)
 
 
-#-----------------
+#### Understanding of selected stocks relationships/correlations etc....
 
-import matplotlib.pyplot as plt
 
-portfolio_total_pnl = daily_portfolio_metrics.loc[:, ['prtf_pnl_tot_ltd']]
-nav = daily_portfolio_metrics.loc[:, ['nav']]
-prtf_tot_rtn_ltd = daily_portfolio_metrics.loc[:, ['prtf_tot_rtn_ltd']]
-sharpe_1y = daily_portfolio_metrics.loc[:, ['1Y_sharpe']]
+import numpy as np
+import seaborn as sns
+import datetime as dt
 
-x_axis = daily_portfolio_metrics.index
+#### Prep
+returns = price_series_df
+returns['return'] = price_series_df.groupby('symbol')['price'].pct_change()
 
+# Remove non-trading days
+returns.replace(0, np.nan, inplace=True)
+returns.dropna(inplace=True)
+
+# Filter only the currently held symbols
+current_holding_filter = daily_asset_metrics.loc[(daily_asset_metrics['date'] == dt.datetime.today().strftime("%Y-%m-%d")) & (daily_asset_metrics['outstanding_position'] != 0), 'symbol']
+returns = returns.loc[returns['symbol'].isin(current_holding_filter), :]
+
+
+#################################
+# Show risk per stock
+#################################
+
+# box plot per stock
+fig, ax = plt.subplots(figsize=(13, 8))
+returns.boxplot(by = 'symbol', column = 'return', ax = ax)
+ax.set_title('Return Distribution by Symbol')
+ax.set_xlabel('')
+ax.set_ylabel('1D Return')
+plt.suptitle('')  # removes pandas automatic title
+plt.xticks(rotation=30)
+plt.tight_layout()
+
+# violin plot
+fig, ax = plt.subplots(figsize=(13, 8))
+sns.violinplot(x = 'symbol', y = 'return', data = returns, inner='quartile', ax = ax)
+ax.set_title('Return Distribution by Symbol')
+ax.set_xlabel('')
+ax.set_ylabel('1D Return')
+ax.text(
+    0.01, -0.10,
+    "Violin is drawn using a kernel density estimate of the underlying distribution; inner lines show quartiles (25%, 50%, 75%).",
+    transform=ax.transAxes,
+    fontsize=10,
+    ha='left',
+)
+
+
+# Distribution of returns
+returns_pivot = returns.reset_index().pivot(index='date', columns='symbol', values='return').dropna()
+
+stats_table = pd.DataFrame(returns_pivot.mean() * 100, columns=['mean'])
+stats_table['std'] = returns_pivot.std() * 100
+
+
+
+## Correlation
+big_mv_filter   = ['DTLE.UK', 'ENR.DE', 'IONQ.US', 'GOOGC.US', 'IUSA.DE', 'NVDA.US', 'ORSTED.DK', 'QBTS.US', 'RGTI.US', 'VWS.DK', 'XAIX.DE']
+energy_filter   = ['DTLE.UK', 'ENR.DE', 'IUSA.DE', 'ORSTED.DK', 'VWS.DK']
+
+fig, ax = plt.subplots(figsize=(13, 8))
+sns.heatmap(returns_pivot[big_mv_filter].corr(), annot= True, ax = ax)
+ax.set_xlabel('')
+ax.set_ylabel('')
+ax.set_title('Correlation: Big MV Stocks')
+
+
+fig, ax = plt.subplots(figsize=(13, 8))
+sns.heatmap(returns_pivot[energy_filter].corr(), annot= True, ax = ax)
+ax.set_xlabel('')
+ax.set_ylabel('')
+ax.set_title('Correlation: Energy Stocks')
+
+
+
+
+## Comparison with normal distribution 2 biggest positions
+
+from scipy import stats
+from matplotlib import pyplot as plt
+
+
+graphed_symbol = 'ENR.DE'
+fig, ax = plt.subplots(figsize=(4, 4))
+stats.probplot(returns_pivot[graphed_symbol], plot=ax)
+ax.set_title('QQ-Plot: ' + graphed_symbol)
+
+graphed_symbol = 'IUSA.DE'
+fig, ax = plt.subplots(figsize=(4, 4))
+stats.probplot(returns_pivot[graphed_symbol], plot=ax)
+ax.set_title('QQ-Plot: ' + graphed_symbol)
+
+
+
+
+
+
+
+
+
+# Distribution of returns of all instruments
+# this is kinda useless as it mixes high risk with low risk instruments....
 fig, ax = plt.subplots()
-#ax.plot(x_axis, portfolio_total_pnl)
-ax.plot(x_axis, nav, label='nav')
-ax.plot(x_axis, sharpe_1y, label='sharpe_1y')
-ax.grid(True)
-
-ax2 = ax.twinx()
-#ax2.plot(x_axis, prtf_tot_rtn_ltd, label='prtf_tot_ltd')
-
-lines, labels = ax.get_legend_handles_labels()
-lines2, labels2 = ax2.get_legend_handles_labels()
-ax2.legend(lines + lines2, labels + labels2, loc=0)
+returns['return'].plot.hist(bins = 1000, xlim= [-0.40, 0.40], density = True, ax = ax)
+returns['return'].plot.density(ax = ax)
+plt.title('Distribution of returns of all instruments')
 
 
-daily_portfolio_metrics.to_excel("test.xlsx")
+

@@ -54,10 +54,10 @@ def print_current_portfolio_metrics(portfolio, price_series_df):
     portfolio.get_biggest_daily_gain()
     portfolio.get_maximum_drawdown()
 
-    var = create_metrics_history.calc_hvar(portfolio.daily_asset_metrics, price_series_df)
-    print(f"1 Day VaR is: {format_percent(var[0]*100)}% or {format_accounting(var[1])} EUR")
+    #var = create_metrics_history.calc_hvar(portfolio.daily_asset_metrics, price_series_df)
+    #print(f"1 Day VaR is: {format_percent(var[0]*100)}% or {format_accounting(var[1])} EUR")
 
-    create_metrics_history.backtest_hvar(portfolio.daily_portfolio_metrics, var[0])
+    #create_metrics_history.backtest_hvar(portfolio.daily_portfolio_metrics, var[0])
 
 
 def overview_per_ticker(portfolio):
@@ -80,13 +80,13 @@ def overview_per_ticker(portfolio):
     aggregated_stats['MV_%'] = aggregated_stats['mv'] / sum(aggregated_stats['mv']) * 100
 
     aggregated_stats = aggregated_stats.rename(columns = {
+                                                        'pnl_dtd': 'PL_DTD',
                                                         'pnl_tot_ltd' : 'PL_Tot_LTD',
-                                                        'pnl_rel_tot_ltd' :  'PL_Tot_LTD_%',
                                                         'other_pnl': 'Dividends',
                                                         'closed_positions': 'Closed Positions',
-                                                        'pnl_dtd' : 'PL_DTD',
+                                                        'cost_cumsum': 'Invested_Amount',
+                                                        'pnl_rel_tot_ltd' :  'PL_Tot_LTD_%',
                                                         'outstanding_position' : 'Outstanding_Position',
-                                                        'cost_cumsum' : 'Invested_Amount',
                                                         'mv': 'MV',
                                                         'price': 'Price'
 
@@ -97,7 +97,9 @@ def overview_per_ticker(portfolio):
 
     aggregated_stats.loc[aggregated_stats['Outstanding_Position'] == 0, 'PL_DTD'] = 0  # when position is sold, do not take the last PL DtD, but rather a  0
 
-    aggregated_stats.loc['Total', ['PL_Tot_LTD', 'Dividends', 'Closed Positions', 'PL_DTD','MV', 'Invested_Amount', 'MV_%']] = aggregated_stats[['PL_Tot_LTD', 'Dividends', 'Closed Positions', 'PL_DTD','MV', 'Invested_Amount', 'MV_%']].sum(numeric_only=True)
+    aggregated_stats.insert(4, 'Unrealized PL', aggregated_stats['PL_Tot_LTD']  - aggregated_stats['Dividends']  - aggregated_stats['Closed Positions'])
+
+    aggregated_stats.loc['Total', ['PL_Tot_LTD', 'Dividends', 'Closed Positions', 'PL_DTD', 'Unrealized PL', 'MV', 'Invested_Amount', 'MV_%']] = aggregated_stats[['PL_Tot_LTD', 'Dividends', 'Closed Positions', 'PL_DTD', 'Unrealized PL' ,'MV', 'Invested_Amount', 'MV_%']].sum(numeric_only=True)
 
     aggregated_stats['PL_Tot_LTD']      = aggregated_stats['PL_Tot_LTD'].apply(format_accounting)
     aggregated_stats['PL_DTD']          = aggregated_stats['PL_DTD'].apply(format_accounting)
@@ -108,7 +110,7 @@ def overview_per_ticker(portfolio):
     aggregated_stats['MV_%']            = aggregated_stats['MV_%'].apply(format_percent)
     aggregated_stats['Dividends']       = aggregated_stats['Dividends'].apply(format_accounting)
     aggregated_stats['Closed Positions'] = aggregated_stats['Closed Positions'].apply(format_accounting)
-
+    aggregated_stats['Unrealized PL']   = aggregated_stats['Unrealized PL'].apply(format_accounting)
 
 
     print("Overview per share")
