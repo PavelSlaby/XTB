@@ -73,7 +73,7 @@ def overview_per_ticker(portfolio):
                                                             'outstanding_position': 'last',
                                                             'price': 'last',
                                                             'mv': 'last',
-                                                            'cost_cumsum': 'last'
+                                                            'cf_cumsum': 'last'
 
                                                         })
 
@@ -84,7 +84,7 @@ def overview_per_ticker(portfolio):
                                                         'pnl_tot_ltd' : 'PL_Tot_LTD',
                                                         'other_pnl': 'Dividends',
                                                         'closed_positions': 'Closed Positions',
-                                                        'cost_cumsum': 'Invested_Amount',
+                                                        'cf_cumsum': 'Invested_Amount',
                                                         'pnl_rel_tot_ltd' :  'PL_Tot_LTD_%',
                                                         'outstanding_position' : 'Outstanding_Position',
                                                         'mv': 'MV',
@@ -133,10 +133,10 @@ def simulate_bmk_rtn(benchmark_symbol, portfolio, price_series_df):
                                      right_on='date')
     #invested_amount_price.loc[invested_amount_price['amount'] == 0, 'amount'] = 0  # np.nan
     invested_amount_price['direction'] = invested_amount_price['amount'] * -1 / invested_amount_price['price']
-    invested_amount_price['cost_cumsum'] = invested_amount_price['amount'].cumsum() * -1
+    invested_amount_price['cf_cumsum'] = invested_amount_price['amount'].cumsum() * -1
     invested_amount_price['direction_cumsum'] = invested_amount_price['direction'].cumsum()
     invested_amount_price['mv'] = invested_amount_price['direction_cumsum'] * invested_amount_price['price']
-    invested_amount_price['Total_Rel_Rtn'] = invested_amount_price['mv'] / invested_amount_price['cost_cumsum'] - 1
+    invested_amount_price['Total_Rel_Rtn'] = invested_amount_price['mv'] / invested_amount_price['cf_cumsum'] - 1
 
     # Graph
     x_axis = daily_portfolio_metrics.index

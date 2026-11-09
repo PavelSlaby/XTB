@@ -63,7 +63,7 @@ def load_prtf_file(file_name = None, folder_path = None):
             logger.error("specified filename does not exist: " + file_name)
             sys.exit(1)
         else:
-            prtf_file = pd.read_excel(file_name, sheet_name = 'CASH OPERATION HISTORY', header = 10, index_col = 1 )
+            prtf_file = pd.read_excel(file_name, sheet_name = 'Cash Operations', header = 4, index_col = 6 )
             logger.info('file loaded: ' + file_name)
             
     if folder_path != None:
@@ -72,7 +72,7 @@ def load_prtf_file(file_name = None, folder_path = None):
             sys.exit(1)
         else:
             most_recent_file = get_most_recent_excel_file(folder_path)
-            prtf_file = pd.read_excel(most_recent_file, sheet_name = 'CASH OPERATION HISTORY', header = 10, index_col = 1 )
+            prtf_file = pd.read_excel(most_recent_file, sheet_name = 'Cash Operations', header = 4, index_col = 6 )
             logger.info('most recent file was loaded: ' + most_recent_file)
     
     return prtf_file
@@ -81,9 +81,8 @@ def load_prtf_file(file_name = None, folder_path = None):
 #--- Data Cleaning functions
 def trim_xtb_xls(prtf_file):
     """
-    trims the loaded file of unnecessary stuff - empty rows etc...
+    trims the loaded file of unnecessary stuff - last row
     """
-    prtf_file = prtf_file.drop(['Unnamed: 0', 'Unnamed: 7'], axis = 1)
     prtf_file = prtf_file.drop([prtf_file.index[-1]], axis = 0)
     return prtf_file
 
@@ -139,7 +138,7 @@ def read_orders_df(orders_df):
         # orders_df = prtf_file_loaded
 
         orders_df = trim_xtb_xls(orders_df) # drops irrelevant rows
-        orders_df = orders_df.rename(columns = {'Type': 'type', 'Comment':'comment', 'Symbol':'symbol', 'Time':'time', 'Amount':'amount'})
+        orders_df = orders_df.rename(columns = {'Type': 'type', 'Comment':'comment', 'Ticker':'symbol', 'Time':'time', 'Amount':'amount'})
 
         # Change dtypes for faster processing
         orders_df[['type', 'comment', 'symbol']] = orders_df[['type', 'comment', 'symbol']].astype('string')
@@ -194,7 +193,7 @@ def read_orders_df(orders_df):
 
         # Direction
         orders_df['direction'] = orders_df['volume']
-        orders_df.loc[orders_df['type'].str.contains('Stock sale'), 'direction'] = orders_df['direction'] * (-1)
+        orders_df.loc[orders_df['type'].str.contains('Stock sell'), 'direction'] = orders_df['direction'] * (-1)
         orders_df.loc[orders_df['direction'].isna(), 'direction'] = 0
         orders_df.loc[orders_df['direction'] == '', 'direction'] = 0
 

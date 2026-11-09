@@ -22,21 +22,23 @@ class PnlItems():
     def __init__(self, orders_df: pd.DataFrame):
         self.orders_df = orders_df
         self.pnl_items_other_sum = None
-        self.pnl_closed_positions = None
+        # self.pnl_closed_positions = None
         
     def prepare(self):
         # filter relevant types
         filtered = self.orders_df.loc[
-            self.orders_df['type'].isin(['DIVIDENT', 'Withholding tax', 'SEC fee', 'fractional shares', 'rights_issue']),
+            self.orders_df['type'].isin(['Dividend', 'Withholding tax', 'SEC fee', 'Fractional shares', 'Rights issue']),
                                 ['date', 'symbol', 'type', 'comment', 'amount', ] ].copy()
         
         self.pnl_items_other_sum = filtered.groupby(['date', 'symbol'])['amount'].sum().reset_index()
         self.pnl_items_other_sum['date'] = pd.to_datetime(self.pnl_items_other_sum['date'])
 
-        filtered_closed_pos = self.orders_df.loc[self.orders_df['type'].isin(['close trade']),['date', 'symbol', 'type', 'comment', 'amount', ]].copy()
-
-        self.pnl_closed_positions = filtered_closed_pos.groupby(['date', 'symbol'])['amount'].sum().reset_index()
-        self.pnl_closed_positions['date'] = pd.to_datetime(self.pnl_closed_positions['date'])
+# TODO: 'close trade' type does not exist anymore, replace it or delete the following
+#
+#         filtered_closed_pos = self.orders_df.loc[self.orders_df['type'].isin(['close trade']),['date', 'symbol', 'type', 'comment', 'amount', ]].copy()
+#
+#         self.pnl_closed_positions = filtered_closed_pos.groupby(['date', 'symbol'])['amount'].sum().reset_index()
+#         self.pnl_closed_positions['date'] = pd.to_datetime(self.pnl_closed_positions['date'])
 
 
 
@@ -64,17 +66,17 @@ class DailyMetrics():
 
         self.daily_asset_metrics = daily_asset_metrics
 
-    def get_closed_positions(self, pnl_closed_positions):
-        """"
-        Adds closed positions
-        """
-
-        daily_asset_metrics = pd.merge(self.daily_asset_metrics, pnl_closed_positions, left_on = ['date', 'symbol'], right_on = ['date', 'symbol'], how = 'left' )
-
-        daily_asset_metrics.rename(columns = { 'amount_x': 'amount', 'amount_y': 'closed_positions'}, inplace = True )
-        daily_asset_metrics[['amount', 'closed_positions']] = daily_asset_metrics[['amount', 'closed_positions']].fillna(0)
-
-        self.daily_asset_metrics = daily_asset_metrics
+    # def get_closed_positions(self, pnl_closed_positions):
+    #     """"
+    #     Adds closed positions
+    #     """
+    #
+    #     daily_asset_metrics = pd.merge(self.daily_asset_metrics, pnl_closed_positions, left_on = ['date', 'symbol'], right_on = ['date', 'symbol'], how = 'left' )
+    #
+    #     daily_asset_metrics.rename(columns = { 'amount_x': 'amount', 'amount_y': 'closed_positions'}, inplace = True )
+    #     daily_asset_metrics[['amount', 'closed_positions']] = daily_asset_metrics[['amount', 'closed_positions']].fillna(0)
+    #
+    #     self.daily_asset_metrics = daily_asset_metrics
 
 
     def calc_pnl(self):
@@ -83,7 +85,7 @@ class DailyMetrics():
         """
         daily_asset_metrics = self.daily_asset_metrics
         # LTD (only position, before other items)
-        daily_asset_metrics['pnl_ltd'] = daily_asset_metrics['mv'] + daily_asset_metrics['cost_cumsum']  + daily_asset_metrics.groupby('symbol')['closed_positions'].cumsum()
+        daily_asset_metrics['pnl_ltd'] = daily_asset_metrics['mv'] + daily_asset_metrics['cf_cumsum'] - daily_asset_metrics['other_pnl']
         # DTD
         daily_asset_metrics = daily_asset_metrics.sort_values(['symbol', 'date'])
         daily_asset_metrics['pnl_dtd'] = daily_asset_metrics.groupby('symbol')['pnl_ltd'].diff()
@@ -93,13 +95,13 @@ class DailyMetrics():
         # LTD Total
         daily_asset_metrics['pnl_tot_ltd'] = daily_asset_metrics.groupby(['symbol'])['pnl_tot_dtd'].cumsum()     
         # LTD rel
-        daily_asset_metrics['pnl_rel_ltd'] = daily_asset_metrics['pnl_ltd'] / daily_asset_metrics['cost_cumsum'] * -1
+        daily_asset_metrics['pnl_rel_ltd'] = daily_asset_metrics['pnl_ltd'] / daily_asset_metrics['purchase_costs_cumsum'] * -1
 
             # For the last day when position is liquidated
         daily_asset_metrics.loc[daily_asset_metrics['outstanding_position'] == 0, 'pnl_rel_ltd'] = daily_asset_metrics['other_pnl'] / (daily_asset_metrics['amount'])
 
         # LTD Tot rel
-        daily_asset_metrics['pnl_rel_tot_ltd'] = daily_asset_metrics['pnl_tot_ltd'] / daily_asset_metrics['cost_cumsum'] * -1
+        daily_asset_metrics['pnl_rel_tot_ltd'] = daily_asset_metrics['pnl_tot_ltd'] / daily_asset_metrics['purchase_costs_cumsum'] * -1
 
             # For the last day when position is liquidated
         daily_asset_metrics.loc[daily_asset_metrics['outstanding_position'] == 0, 'pnl_rel_tot_ltd'] = daily_asset_metrics[
@@ -120,15 +122,18 @@ class DailyMetrics():
          """
          daily_asset_metrics = self.daily_asset_metrics
          # Pivots the daily_asset_metrics so that we can calculate statistics on the total
-         pivoted = daily_asset_metrics[['date', 'symbol', 'pnl_tot_ltd', 'pnl_ltd', 'mv','other_pnl' , 'cost_cumsum', 'amount',  'pnl_tot_dtd', 'pnl_rel_dtd']].pivot(index='date', columns='symbol', values=[ 'pnl_tot_ltd', 'pnl_rel_dtd', 'mv', 'other_pnl', 'amount', 'cost_cumsum', 'pnl_ltd', 'pnl_tot_dtd'])
+         pivoted = daily_asset_metrics[['date', 'symbol', 'pnl_tot_ltd', 'pnl_ltd', 'mv','other_pnl' , 'cf_cumsum', 'purchase_costs_cumsum', 'amount',  'pnl_tot_dtd', 'pnl_rel_dtd']].pivot(index='date', columns='symbol', values=[ 'pnl_tot_ltd', 'pnl_rel_dtd', 'mv', 'other_pnl', 'amount', 'cf_cumsum', 'purchase_costs_cumsum', 'pnl_ltd', 'pnl_tot_dtd'])
          pivoted['prtf_mv']            = pivoted['mv'].sum(axis = 1)
-         pivoted['prtf_cost_sum']      = pivoted['cost_cumsum'].sum(axis = 1) * -1
+         pivoted['prtf_cost_sum']      = pivoted['cf_cumsum'].sum(axis = 1) * -1
+         pivoted['prtf_purchase_costs_cumsum']       = pivoted['purchase_costs_cumsum'].sum(axis=1) * -1
          pivoted['prtf_pnl_tot_ltd']   = pivoted['pnl_tot_ltd'].sum(axis = 1)
          pivoted['prtf_pnl_ltd']       = pivoted['pnl_ltd'].sum(axis = 1)
          pivoted['prtf_tot_rtn_ltd']   = pivoted['prtf_pnl_tot_ltd'] / pivoted['prtf_cost_sum'] 
          pivoted['prtf_rtn_ltd']       = pivoted['prtf_pnl_ltd'] / pivoted['prtf_cost_sum'] 
          pivoted['prtf_cost_dtd']      = pivoted['amount'].sum(axis = 1)  * -1
          pivoted['prtf_other_pnl']     = pivoted['other_pnl'].sum(axis=1)
+
+
 
          self.daily_portfolio_metrics = pivoted
          

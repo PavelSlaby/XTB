@@ -7,15 +7,18 @@ This script:
 - Loads transaction and market data
 - Runs core data transformation
 - Prepares data for portfolio analysis, risk, and reporting modules
-- total return seems to be smaller then the actual return
+- total return seems to be smaller than the actual return
 
 Project structure: https://github.com/pslaby/portfolio-analytics
 """
+
 import numpy as np
 from matplotlib import pyplot as plt
 
 '''
     TODO: 
+    
+    -- "pnl_rel_dtd" is misleading when the value drops on already negative LTD PnL. The number is then positive....
     
     - next step is to review the  var in print_current_portfolio_metrics - I skipped var in that one....
         and then its all reviewed and done. 
@@ -112,7 +115,7 @@ def create_metrics(outputs):
     metrics_obj.calculate_mv()
     metrics_obj.include_other_pnl_items(pnl_items_obj.pnl_items_other_sum)
 
-    metrics_obj.get_closed_positions(pnl_items_obj.pnl_closed_positions)
+    #metrics_obj.get_closed_positions(pnl_items_obj.pnl_closed_positions)
 
     metrics_obj.calc_pnl()
     
